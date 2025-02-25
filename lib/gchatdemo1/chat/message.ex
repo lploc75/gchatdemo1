@@ -10,6 +10,7 @@ defmodule Gchatdemo1.Chat.Message do
     field :message_type, :string, default: "text"
     field :is_edited, :boolean, default: false
     field :is_recalled, :boolean, default: false
+    field :is_deleted, :boolean, default: false
 
     timestamps()
   end

@@ -11,7 +11,8 @@ defmodule Gchatdemo1Web.ChatLive do
   end
 
   def handle_event("select_group", %{"group_id" => group_id}, socket) do
-    messages = Chat.list_messages(group_id)
+    user_id = socket.assigns.current_user.id  # Lấy user ID từ assigns
+    messages = Chat.list_messages(group_id, user_id)
     formatted_messages = format_messages(messages, socket.assigns.user_id)
     {:noreply, assign(socket, selected_group: group_id, messages: formatted_messages)}
   end

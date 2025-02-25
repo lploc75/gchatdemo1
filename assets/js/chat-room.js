@@ -123,6 +123,31 @@ export class ChatRoom extends LitElement {
   button:hover { 
     background: #0056b3; 
   }
+
+  /* Context Menu */
+  .context-menu {
+  position: absolute;
+  background: white;
+  border: 1px solid #ddd;
+  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+  padding: 5px;
+  z-index: 1000;
+  }
+
+  .context-menu button {
+    background: #ff5252;
+   color: white;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+
+  .context-menu.show {
+  display: block;
+  visibility: visible; /* Hiện khi có class show */
+  }
+  
 `;
 
   static properties = {
@@ -130,16 +155,22 @@ export class ChatRoom extends LitElement {
     selectedGroup: { type: Object },
     messages: { type: Array },
     socket: { type: Object },
-    channel: { type: Object }
+    channel: { type: Object },
+    selectedMessageId: { type: String },
+    contextMenuVisible: { type: Boolean },
+    contextMenuPosition: { type: Object }
   };
 
   constructor() {
     super();
     this.groups = [];
     this.selectedGroup = null;
+    this.selectedMessageId = null; // Lưu tin nhắn đang được chọn để thu hồi
     this.messages = [];
     this.socket = null;
     this.channel = null;
+    this.contextMenuVisible = false; // Menu khi nhắn chuột phải
+    this.contextMenuPosition = { top: 0, left: 0 }; 
   }
   
   async getUserIdAndToken() {
@@ -161,7 +192,7 @@ export class ChatRoom extends LitElement {
 
   async connectedCallback() {
     super.connectedCallback();
-    const userData = await this.getUserIdAndToken(); // Get both token and userId
+    const userData = await this.getUserIdAndToken(); // Lấy user id và session token
     if (userData) {
       const { token, userId } = userData;  // Destructure to get token and userId
       console.log("userId:", userId); // Check userId
@@ -169,20 +200,29 @@ export class ChatRoom extends LitElement {
       this.initializeSocket(token);
     }
 
-    try {
-      const res = await fetch("/api/groups");
-      if (!res.ok) throw new Error("Unable to load groups!");
-      this.groups = await res.json();
-    } catch (error) {
-      console.error(error);
-    }
-  }
+    this.loadGroups();
+    document.addEventListener("click", (event) => {
+      const contextMenu = this.shadowRoot.querySelector(".context-menu");
+      if (contextMenu && !contextMenu.contains(event.target)) {
+        this.contextMenuVisible = false;
+        this.requestUpdate(); // 🔥 Cập nhật trạng thái để ẩn context menu
+      }
+    });  }
 
   initializeSocket(token) {
     this.socket = new Socket("/socket", { params: { token } });
     this.socket.connect();
   }
 
+  async loadGroups() {
+    try {
+      const res = await fetch("/api/groups");
+      if (!res.ok) throw new Error("Không thể tải nhóm!");
+      this.groups = await res.json();
+    } catch (error) {
+      console.error(error);
+    }
+  }
   async selectGroup(group) {
     this.selectedGroup = group;
     this.messages = [];
@@ -196,6 +236,7 @@ export class ChatRoom extends LitElement {
       this.messages = data.map(msg => {
         console.log(`🧐 Tin nhắn ID: ${msg.id}, user_id: ${msg.user_id}, this.userId: ${this.userId}`);
         return {
+          id: msg.id,  // Thêm ID để nhận diện tin nhắn khi thu hồi
           content: msg.content,
           sender: msg.user_id === this.userId ? "me" : "other",
           email: msg.user_email, // Lấy email từ API
@@ -205,7 +246,7 @@ export class ChatRoom extends LitElement {
 
     } catch (error) {
       console.error("❌ Lỗi khi tải tin nhắn:", error);
-      this.messages = []; // ✅ Nếu lỗi, giữ giá trị là mảng rỗng
+      this.messages = []; // Nếu lỗi, giữ giá trị là mảng rỗng
     }
 
     // 🔴 Hủy đăng ký kênh cũ nếu có
@@ -231,6 +272,7 @@ export class ChatRoom extends LitElement {
         // Kiểm tra xem payload.message có tồn tại và có chứa thuộc tính content không
         if (payload.message && payload.message.content) {
           const newMessage = {
+            id: payload.message.id,  // Thêm ID
             content: payload.message.content,
             sender: payload.sender,
             email: payload.email, // Email từ payload của WebSocket
@@ -242,7 +284,20 @@ export class ChatRoom extends LitElement {
           console.error("❌ Tin nhắn không hợp lệ:", payload.message);
         }
       });
+      this.channel.on("message_recalled", (payload) => {
+        console.log("🚨 Tin nhắn bị thu hồi:", payload);
 
+        // Cập nhật danh sách tin nhắn: thay thế nội dung tin nhắn thành "[Message recalled]"
+        this.messages = this.messages.map(msg =>
+          msg.id === payload.message_id ? { ...msg, content: "[Message recalled]" } : msg
+        );
+      });
+      // Xóa tin nhắn
+      this.channel.on("message_deleted", (payload) => {
+        console.log("🗑 Tin nhắn bị xóa:", payload);
+        this.messages = this.messages.filter(msg => msg.id !== payload.message_id);
+        this.requestUpdate();
+      });
     } else {
       console.error("❌ WebSocket chưa được kết nối!");
     }
@@ -279,6 +334,33 @@ export class ChatRoom extends LitElement {
     }
   }
 
+  showContextMenu(event, messageId) {
+    event.preventDefault();
+    console.log("📌 Chuột phải vào tin nhắn:", messageId); // Kiểm tra hàm có chạy không
+    this.selectedMessageId = messageId; // Lưu ID tin nhắn đang chọn
+    this.contextMenuPosition = { top: event.clientY, left: event.clientX };
+    this.contextMenuVisible = true;
+    console.log("📌 Hiển thị context menu tại:", this.contextMenuPosition);
+    this.requestUpdate(); // 🔥 Cập nhật UI để hiển thị context menu
+  }
+
+  recallMessage(messageId) {
+    console.log("🚀 Đang thu hồi tin nhắn:", messageId);
+    this.channel.push("recall_message", { message_id: messageId });
+  }
+  deleteMessage(messageId) {
+    console.log("🗑 Xóa tin nhắn:", messageId);
+    if (this.channel) {
+      this.channel.push("delete_message", { message_id: messageId })
+        .receive("ok", () => {
+          console.log("✅ Tin nhắn đã bị xóa");
+        })
+        .receive("error", (err) => {
+          console.error("❌ Lỗi khi xóa tin nhắn:", err);
+          alert("Không thể xóa tin nhắn!");
+        });
+    }
+  }
 
   render() {
     return html`
@@ -297,7 +379,9 @@ export class ChatRoom extends LitElement {
                 <h3>Nhóm: ${this.selectedGroup.name}</h3>
                   <div class="messages">
                   ${this.messages.map((msg) => html`
-                    <div class="message ${msg.sender === 'me' ? 'me' : 'other'}">
+                    <div class="message ${msg.sender}" data-id="${msg.id}" @contextmenu="${(e) => 
+                      this.showContextMenu(e, msg.id)}">
+
                     <div class="email">${msg.email}</div>  <!-- Hiển thị email người gửi -->
                     <div class="content">${msg.content}</div>  <!-- Nội dung tin nhắn -->
                     </div>
@@ -312,6 +396,16 @@ export class ChatRoom extends LitElement {
         : html`<p>Chọn nhóm để bắt đầu chat</p>`}
         </div>
       </div>
+
+      ${this.contextMenuVisible ? html`
+      <div class="context-menu" 
+          style="top: ${this.contextMenuPosition.top}px; left: ${this.contextMenuPosition.left}px;"
+          @click="${(e) => e.stopPropagation()}">
+        <button @click="${() => this.recallMessage(this.selectedMessageId)}">Thu hồi tin nhắn</button>
+        <button @click="${() => this.deleteMessage(this.selectedMessageId)}">Xóa tin nhắn</button>
+      </div>
+      ` : ''}
+
     `;
   }
 }

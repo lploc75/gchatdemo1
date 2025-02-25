@@ -3,14 +3,14 @@ defmodule Gchatdemo1Web.ChatController do
   alias Gchatdemo1.Chat
 
   def get_groups(conn, _params) do
-
     user = conn.assigns[:current_user]  # Lấy thông tin user từ assigns
     groups = Chat.list_groups_for_user(user.id)  # Gọi hàm từ module Chat để lấy danh sách nhóm cho user
     json(conn, groups)  # Trả về JSON response
   end
 
   def get_messages(conn, %{"conversation_id" => conversation_id}) do
-    messages = Chat.list_messages(conversation_id)
+    user = conn.assigns[:current_user]  # Lấy thông tin user từ assigns
+    messages = Chat.list_messages(conversation_id, user.id)
     json(conn, messages)
   end
 

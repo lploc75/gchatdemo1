@@ -11,23 +11,6 @@ config :gchatdemo1,
   ecto_repos: [Gchatdemo1.Repo],
   generators: [timestamp_type: :utc_datetime]
 
-# config :cloudex,
-  # api_key: System.fetch_env!("CLOUDINARY_API_KEY"),
-  # api_secret: System.fetch_env!("CLOUDINARY_API_SECRET"),
-  # cloud_name: System.fetch_env!("CLOUDINARY_CLOUD_NAME")
-# Configures the cloudinary
-config :cloudex,
-  api_key: "335681169415731",
-  secret: "wARMUj_KXlpHmJp9b7gczCpfFmg",
-  cloud_name: "djyr2tc78"
-# set CLOUDINARY_CLOUD_NAME=djyr2tc78
-# set CLOUDINARY_API_SECRET=wARMUj_KXlpHmJp9b7gczCpfFmg
-# set CLOUDINARY_API_KEY=335681169415731
-
-# $env:CLOUDINARY_API_KEY="335681169415731"
-# $env:CLOUDINARY_API_SECRET="wARMUj_KXlpHmJp9b7gczCpfFmg"
-# $env:CLOUDINARY_CLOUD_NAME="djyr2tc78"
-
 # Configures the endpoint
 config :gchatdemo1, Gchatdemo1Web.Endpoint,
   url: [host: "localhost"],
