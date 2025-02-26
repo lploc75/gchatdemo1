@@ -1,7 +1,7 @@
 defmodule Gchatdemo1Web.GroupChatChannel do
   use Phoenix.Channel
   alias Gchatdemo1.Chat
-  alias Gchatdemo1.Accounts  # Giả sử mô hình người dùng của bạn nằm trong module Accounts
+  alias Gchatdemo1.Accounts
 
   def join("group_chat:" <> group_id, _params, socket) do
     user_id = socket.assigns[:user_id] # Lấy user_id từ socket
@@ -57,7 +57,7 @@ defmodule Gchatdemo1Web.GroupChatChannel do
 
   def handle_in("delete_message", %{"message_id" => message_id}, socket) do
     user_id = socket.assigns.user_id
-    IO.puts("🗑 User #{user_id} yêu cầu xóa tin nhắn #{message_id}")
+    IO.puts("User #{user_id} yêu cầu xóa tin nhắn #{message_id}")
 
     case Chat.delete_message(message_id, user_id) do
       {:ok, message} ->
@@ -71,5 +71,35 @@ defmodule Gchatdemo1Web.GroupChatChannel do
         {:reply, {:error, %{status: "failed", reason: inspect(reason)}}, socket}
     end
   end
+
+  def handle_in("add_reaction", %{"message_id" => message_id, "emoji" => emoji}, socket) do
+    user_id = socket.assigns.user_id
+
+    case Chat.create_or_update_reaction(user_id, message_id, emoji) do
+      {:ok, _reaction} ->
+        broadcast!(socket, "reaction_added", %{
+          message_id: message_id,
+          user_id: user_id,
+          emoji: emoji
+        })
+        {:reply, :ok, socket}
+
+      {:error, _reason} ->
+        {:reply, {:error, "Failed to add reaction"}, socket}
+    end
+  end
+def handle_in("remove_reaction", %{"message_id" => message_id}, socket) do
+  user_id = socket.assigns.user_id
+
+  case Chat.remove_reaction(message_id,user_id) do
+    {:ok, _} ->
+      broadcast!(socket, "reaction_removed", %{"message_id" => message_id, "user_id" => user_id})
+      {:noreply, socket}
+
+    {:error, reason} ->
+      IO.inspect(reason, label: "🔍 Error in remove_reaction")
+      {:reply, {:error, reason}, socket}
+  end
+end
 
 end

@@ -19,7 +19,8 @@ export default {
       if (typeof onViewError === "function") {
         onViewError(() => xhr.abort())
       }
-
+      
+      // Theo dõi tiến trình upload và cập nhật phần trăm hoàn thành.
       xhr.upload.addEventListener("progress", (event) => {
         if (event.lengthComputable) {
           let percent = Math.round((event.loaded / event.total) * 100)
@@ -29,6 +30,7 @@ export default {
         }
       })
 
+      // Nếu xhr.status === 200 nghĩa là upload thành công, cập nhật tiến trình lên 100%.
       xhr.onload = () => {
         if (xhr.status === 200) {
           let response = JSON.parse(xhr.responseText)

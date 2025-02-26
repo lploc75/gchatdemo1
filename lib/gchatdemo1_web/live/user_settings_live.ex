@@ -13,11 +13,12 @@ defmodule Gchatdemo1Web.UserSettingsLive do
       Account Settings
       <:subtitle>Manage your account email address and password settings</:subtitle>
     </.header>
-    <%!-- <img
+    <img
       src={@current_user.avatar_url || "https://res.cloudinary.com/djyr2tc78/image/upload/v1739503287/default_avatar.png"}
       alt="Avatar"
-      width="200"
-    /> --%>
+      width="150"
+      class="rounded-full"
+    />
     <h1>Update Avatar</h1>
     <form phx-change="validate_images" phx-submit="upload_images">
       <.live_file_input upload={@uploads.images} />
@@ -37,13 +38,28 @@ defmodule Gchatdemo1Web.UserSettingsLive do
         </div>
       </article>
     </form>
-
+<%!--
     <div :if={@uploaded_images}>
       <h2>Avatar của bạn</h2>
       <img src={@uploaded_images} width="150" />
-    </div>
+    </div> --%>
 
     <div class="space-y-12 divide-y">
+    <div>
+<.simple_form
+  for={@display_name_form}
+  id="display_name_form"
+  phx-submit="update_display_name"
+  phx-change="validate_display_name"
+>
+  <.input field={@display_name_form[:display_name]} type="text" label="Display Name" required />
+
+  <:actions>
+    <.button phx-disable-with="Saving...">Save</.button>
+  </:actions>
+</.simple_form>
+
+    </div>
       <div>
         <.simple_form
           for={@email_form}
@@ -120,9 +136,11 @@ defmodule Gchatdemo1Web.UserSettingsLive do
   end
 
 def mount(params, _session, socket) do
+  user = socket.assigns.current_user
+
   socket =
     socket
-    |> assign(:uploaded_images, nil)
+    |> assign(:uploaded_images, user.avatar_url)  # Gán avatar hiện tại vào assigns
     |> allow_upload(:images,
       accept: ~w(image/png image/jpeg),
       max_entries: 1,
@@ -146,9 +164,11 @@ def mount(params, _session, socket) do
     user = socket.assigns.current_user
     email_changeset = Accounts.change_user_email(user)
     password_changeset = Accounts.change_user_password(user)
+    display_name_changeset = Accounts.change_user_display_name(user)
 
     socket =
       socket
+      |> assign(:display_name_form, to_form(display_name_changeset))
       |> assign(:current_password, nil)
       |> assign(:email_form_current_password, nil)
       |> assign(:current_email, user.email)
@@ -159,58 +179,75 @@ def mount(params, _session, socket) do
     {:ok, socket}
   end
 end
-
 defp presign_upload(entry, socket) do
-  if is_nil(cloud_name()) or is_nil(api_key()) or is_nil(api_secret()) do
-    IO.puts("❌ Lỗi: Cloudinary API key hoặc secret chưa được cấu hình!")
-    {:noreply, put_flash(socket, :error, "Cloudinary chưa được cấu hình!")}
+  user = socket.assigns.current_user
+  timestamp = DateTime.utc_now() |> DateTime.to_unix()  # Lấy timestamp hiện tại
+  public_id = "avatars/#{user.id}"  # Giữ nguyên ID user
 
-    else
-      params = %{
-        timestamp: DateTime.utc_now() |> DateTime.to_unix(),
-        public_id: Path.rootname(entry.client_name),
-        eager: "w_400,h_300,c_pad|w_260,h_200,c_crop"
-      }
+  params = %{
+    timestamp: timestamp,
+    public_id: public_id,
+    overwrite: true,
+    eager: "w_400,h_300,c_pad|w_260,h_200,c_crop"
+  }
 
-      query_string_with_secret =
-        params
-        |> Enum.sort_by(fn {k, _v} -> k end)
-        |> Enum.map(fn {k, v} -> "#{k}=#{v}" end)
-        |> Enum.join("&")
-        |> Kernel.<>(api_secret())
+  query_string_with_secret =
+    params
+    |> Enum.sort_by(fn {k, _v} -> k end)
+    |> Enum.map(fn {k, v} -> "#{k}=#{v}" end)
+    |> Enum.join("&")
+    |> Kernel.<>(api_secret())
 
-      signature =
-        :crypto.hash(:sha256, query_string_with_secret) # Dùng SHA-256 thay vì SHA
-        |> Base.encode16(case: :lower)
+  signature =
+    :crypto.hash(:sha256, query_string_with_secret)
+    |> Base.encode16(case: :lower)
 
-      fields =
-        params
-        |> Map.put(:signature, signature)
-        |> Map.put(:api_key, api_key())
+  fields =
+    params
+    |> Map.put(:signature, signature)
+    |> Map.put(:api_key, api_key())
 
-      meta = %{
-        uploader: "Cloudinary",
-        url: "https://api.cloudinary.com/v1_1/#{cloud_name()}/image/upload",
-        fields: fields
-      }
-  # IO.inspect(cloud_name(), label: "Cloudinary Cloud Name")
-  # IO.inspect(api_key(), label: "Cloudinary API Key")
-  # IO.inspect(api_secret(), label: "Cloudinary API Secret")
+  meta = %{
+    uploader: "Cloudinary",
+    url: "https://api.cloudinary.com/v1_1/#{cloud_name()}/image/upload",
+    fields: fields
+  }
 
-      IO.inspect(meta, label: "✅ Cloudinary Upload Metadata")
+  {:ok, meta, socket}
+end
 
-      {:ok, meta, socket}
-    end
-  end
 defp handle_progress(:images, entry, socket) do
-  IO.inspect(entry, label: "🚀 Entry Progress")
-
   if entry.done? do
     consume_uploaded_entry(socket, entry, fn %{fields: fields} ->
-      update_avatar_url(socket, cloudinary_image_url(fields.public_id))
+      timestamp = DateTime.utc_now() |> DateTime.to_unix()
+      update_avatar_url(socket, cloudinary_image_url(fields.public_id, timestamp))
     end)
   else
     {:noreply, socket}
+  end
+end
+def handle_event("validate_display_name", %{"user" => user_params}, socket) do
+  display_name_form =
+    socket.assigns.current_user
+    |> Accounts.change_user_display_name(user_params)
+    |> Map.put(:action, :validate)
+    |> to_form()
+
+  {:noreply, assign(socket, display_name_form: display_name_form)}
+end
+
+def handle_event("update_display_name", %{"user" => user_params}, socket) do
+  user = socket.assigns.current_user
+
+  case Accounts.update_user_display_name(user, user_params) do
+    {:ok, updated_user} ->
+      {:noreply,
+       socket
+       |> put_flash(:info, "Display Name updated successfully!")
+       |> assign(display_name_form: to_form(Accounts.change_user_display_name(updated_user)), current_user: updated_user)}
+
+    {:error, changeset} ->
+      {:noreply, assign(socket, display_name_form: to_form(changeset))}
   end
 end
 
@@ -281,11 +318,11 @@ end
   end
 
  # 🟢 Cập nhật handle_event để xử lý danh sách ảnh tải lên
-
 def handle_event("upload_images", _params, socket) do
   uploaded_images =
     consume_uploaded_entries(socket, :images, fn %{fields: fields}, _entry ->
-      {:ok, cloudinary_image_url(fields.public_id)}
+      timestamp = DateTime.utc_now() |> DateTime.to_unix()
+      {:ok, cloudinary_image_url(fields.public_id, timestamp)}
     end)
 
   case uploaded_images do
@@ -295,26 +332,24 @@ def handle_event("upload_images", _params, socket) do
 end
 
 defp update_avatar_url(socket, images_url) do
-  IO.inspect(images_url, label: "✅ Avatar URL gửi vào DB")
-
   case Accounts.update_user_avatar(socket.assigns.current_user, %{avatar_url: images_url}) do
     {:ok, updated_user} ->
-      IO.inspect(images_url, label: "✅ Avatar URL đã lưu vào DB")
       {:noreply, assign(socket, uploaded_images: images_url, current_user: updated_user)}
 
     {:error, _changeset} ->
-      IO.puts("❌ Không thể cập nhật avatar vào DB")
       {:noreply, put_flash(socket, :error, "Không thể cập nhật avatar!")}
-    end
   end
+end
+
 
   def handle_event("cancel-upload", %{"ref" => ref}, socket) do
     {:noreply, cancel_upload(socket, :images, ref)}
   end
 
-  defp cloudinary_image_url(public_id) do
-    "https://res.cloudinary.com/#{cloud_name()}/image/upload/#{public_id}.png"
-  end
+defp cloudinary_image_url(public_id, timestamp) do
+  "https://res.cloudinary.com/#{cloud_name()}/image/upload/v#{timestamp}/#{public_id}.png"
+end
+
 
   defp upload_error_to_string(:too_large), do: "The file is too large"
   defp upload_error_to_string(:too_many_files), do: "You have selected too many files"

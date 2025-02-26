@@ -368,4 +368,19 @@ defmodule Gchatdemo1.Accounts do
     |> User.avatar_changeset(attrs)
     |> Repo.update()
   end
+
+# Trả về một changeset để kiểm tra hoặc hiển thị form mà không thay đổi dữ liệu trong database.
+# Kiểm tra xem dữ liệu có hợp lệ không trước khi lưu vào database
+def change_user_display_name(%User{} = user, attrs \\ %{}) do
+  User.display_name_changeset(user, attrs)
+end
+
+#  Cập nhật vào database
+def update_user_display_name(%User{} = user, attrs) do
+  user
+  |> User.display_name_changeset(attrs)
+  |> Repo.update()
+end
+
+
 end
