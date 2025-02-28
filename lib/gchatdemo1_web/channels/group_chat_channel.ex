@@ -26,8 +26,11 @@ defmodule Gchatdemo1Web.GroupChatChannel do
     case Chat.send_message(user_id, group_id, content) do
       {:ok, message} ->
         broadcast!(socket, "new_message", %{
-          message: %{content: message.content},
-          sender: sender,  # Gửi "me" hoặc "other" thay vì user_id
+          message: %{
+              id: message.id,  # Thêm id vào trong message
+              content: message.content
+            },
+            sender: sender,  # Gửi "me" hoặc "other"
           email: user_email  # Gửi email cùng với tin nhắn
         })
 
@@ -74,7 +77,7 @@ defmodule Gchatdemo1Web.GroupChatChannel do
 
   def handle_in("add_reaction", %{"message_id" => message_id, "emoji" => emoji}, socket) do
     user_id = socket.assigns.user_id
-
+    IO.puts("👍 User #{user_id} thêm reaction cho tin nhắn #{message_id}")
     case Chat.create_or_update_reaction(user_id, message_id, emoji) do
       {:ok, _reaction} ->
         broadcast!(socket, "reaction_added", %{

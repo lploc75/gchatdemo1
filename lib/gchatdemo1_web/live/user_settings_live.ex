@@ -38,7 +38,7 @@ defmodule Gchatdemo1Web.UserSettingsLive do
         </div>
       </article>
     </form>
-<%!--
+    <%!--
     <div :if={@uploaded_images}>
       <h2>Avatar của bạn</h2>
       <img src={@uploaded_images} width="150" />

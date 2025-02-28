@@ -10,6 +10,9 @@ defmodule Gchatdemo1.Accounts.User do
     field :confirmed_at, :utc_datetime
     field :display_name, :string
     field :avatar_url, :string
+    field :status, :string, default: "offline"
+    field :last_active_at, :utc_datetime
+    field :role, :integer, default: 1
 
     timestamps(type: :utc_datetime)
   end

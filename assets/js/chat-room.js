@@ -331,6 +331,7 @@ export class ChatRoom extends LitElement {
           this.messages = [...this.messages, newMessage];
         } else {
           console.error("❌ Tin nhắn không hợp lệ:", payload.message);
+          console.error("❌ Tin nhắn không hợp lệ:", payload.email);
         }
       });
       this.channel.on("message_recalled", (payload) => {
@@ -469,7 +470,7 @@ export class ChatRoom extends LitElement {
           });
       } else {
         // Nếu chưa có emoji, gửi sự kiện thêm reaction
-        this.channel.push("add_reaction", { message_id: messageId, emoji })
+        this.channel.push("add_reaction", { emoji, message_id: messageId })
           .receive("ok", () => {
             console.log(`✅ Đã gửi emoji ${emoji}`);
           })
