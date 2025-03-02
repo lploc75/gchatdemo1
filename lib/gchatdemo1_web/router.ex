@@ -91,10 +91,12 @@ defmodule Gchatdemo1Web.Router do
     pipe_through :api
 
     get "/user_token", UserSessionController, :get_token # Thêm route này để lấy token
-    # get "/me", UserSessionController, :me # Thêm route này để lấy thông tin user
 
-    get "/groups", ChatController, :get_groups  # Đổi list_groups thành get_groups
+    get "/friends", ChatController, :get_friends # Lấy danh sách bạn bè của người dùng
+    get "/groups", ChatController, :get_groups  # Lấy dánh sách nhóm của người dùng
     get "/messages/:conversation_id", ChatController, :get_messages  # Đổi list_messages thành get_messages
+
+    post "/groups", ChatController, :get_groups  # Lấy dánh sách nhóm của người dùng
     post "/groups/create", ChatController, :create_group
     post "/groups/add_member", ChatController, :add_member
     # post "/messages", ChatController, :send_message

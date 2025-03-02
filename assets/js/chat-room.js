@@ -218,9 +218,11 @@ export class ChatRoom extends LitElement {
     this.socket = null;
     this.channel = null;
     this.contextMenuVisible = false; // Menu khi nhắn chuột phải
-    this.contextMenuPosition = { top: 0, left: 0 }; 
+    this.contextMenuPosition = { top: 0, left: 0 };
+    this.editHistory = {}; // Lưu lịch sử chỉnh sửa theo từng messageId
+    this.showEditHistoryId = null; // Message đang hiển thị lịch sử chỉnh sửa
   }
-  
+
   async getUserIdAndToken() {
     try {
       const res = await fetch("/api/user_token", { credentials: "include" });
@@ -255,22 +257,14 @@ export class ChatRoom extends LitElement {
         this.contextMenuVisible = false;
         this.requestUpdate(); // 🔥 Cập nhật trạng thái để ẩn context menu
       }
-    });  }
+    });
+  }
 
   initializeSocket(token) {
     this.socket = new Socket("/socket", { params: { token } });
     this.socket.connect();
   }
 
-  async loadGroups() {
-    try {
-      const res = await fetch("/api/groups");
-      if (!res.ok) throw new Error("Không thể tải nhóm!");
-      this.groups = await res.json();
-    } catch (error) {
-      console.error(error);
-    }
-  }
   async selectGroup(group) {
     this.selectedGroup = group;
     this.messages = [];
@@ -290,6 +284,7 @@ export class ChatRoom extends LitElement {
           email: msg.user_email, // Lấy email từ API
           reaction: msg.reaction, // Lấy emoji từ API
           is_recalled: msg.is_recalled, // Tin nhắn bị thu hồi
+          is_edited: msg.is_edited, // Tin nhắn đã sửa
         };
       });
       console.log("✅ Tin nhắn sau khi gán sender:", this.messages);
@@ -322,7 +317,7 @@ export class ChatRoom extends LitElement {
         // Kiểm tra xem payload.message có tồn tại và có chứa thuộc tính content không
         if (payload.message && payload.message.content) {
           const newMessage = {
-            id: payload.message.id,  
+            id: payload.message.id,
             content: payload.message.content,
             sender: payload.sender,
             email: payload.email, // Email từ payload của WebSocket
@@ -339,11 +334,11 @@ export class ChatRoom extends LitElement {
 
         // Cập nhật danh sách tin nhắn: thay thế nội dung tin nhắn thành "[Message recalled]"
         this.messages = this.messages.map(msg =>
-          msg.id === payload.message_id ? { ...msg, content: html`<em>Tin nhắn đã được thu hồi</em>`, reaction: msg.reaction ? null : undefined , is_recalled: true }
-          : msg
+          msg.id === payload.message_id ? { ...msg, content: html`<em>Tin nhắn đã được thu hồi</em>`, reaction: msg.reaction ? null : undefined, is_recalled: true }
+            : msg
         );
       });
-      
+
       // Xóa tin nhắn
       this.channel.on("message_deleted", (payload) => {
         console.log("🗑 Tin nhắn bị xóa:", payload);
@@ -374,9 +369,31 @@ export class ChatRoom extends LitElement {
           return msg;
         });
       });
-
+      this.channel.on("message_edited", (payload) => {
+        this.messages = this.messages.map(msg => {
+          if (msg.id === payload.message_id) {
+            return {
+              ...msg,
+              content: payload.new_content,
+              is_edited: true,
+              edited_at: payload.edited_at // Hiển thị thời gian sửa
+            }
+          }
+          return msg
+        })
+      })
     } else {
       console.error("❌ WebSocket chưa được kết nối!");
+    }
+  }
+
+  async loadGroups() {
+    try {
+      const res = await fetch("/api/groups");
+      if (!res.ok) throw new Error("Không thể tải nhóm!");
+      this.groups = await res.json();
+    } catch (error) {
+      console.error(error);
     }
   }
 
@@ -430,6 +447,16 @@ export class ChatRoom extends LitElement {
     this.requestUpdate(); // 🔥 Cập nhật UI để hiển thị context menu
   }
 
+  startEditingMessage(messageId) {
+    const msg = this.messages.find(msg => msg.id === messageId);
+    if (!msg) return;
+
+    this.editingMessageId = messageId;
+    this.editingMessageContent = msg.content; // Lưu nội dung cũ để sửa
+    this.contextMenuVisible = false; // Ẩn context menu
+    this.requestUpdate();
+  }
+
   recallMessage(messageId) {
     console.log("🚀 Đang thu hồi tin nhắn:", messageId);
     this.channel.push("recall_message", { message_id: messageId });
@@ -447,6 +474,29 @@ export class ChatRoom extends LitElement {
           alert("Không thể xóa tin nhắn!");
         });
     }
+  }
+
+  saveEditedMessage(messageId) {
+    if (!this.editingMessageContent.trim()) return;
+
+    this.channel.push("edit_message", { id: messageId, content: this.editingMessageContent })
+      .receive("ok", (res) => {
+        console.log("✅ Tin nhắn đã chỉnh sửa:", res);
+        const msgIndex = this.messages.findIndex(m => m.id === messageId);
+        if (msgIndex !== -1) {
+          this.messages[msgIndex].content = this.editingMessageContent;
+        }
+        this.editingMessageId = null;
+        this.requestUpdate();
+      })
+      .receive("error", (err) => {
+        console.error("❌ Lỗi khi chỉnh sửa tin nhắn:", err);
+      });
+  }
+  cancelEditing() {
+    this.editingMessageId = null;
+    this.editingMessageContent = "";
+    this.requestUpdate();
   }
 
   reactToMessage(messageId, emoji) {
@@ -481,29 +531,109 @@ export class ChatRoom extends LitElement {
     }
   }
 
+  // Phương thức lấy danh sách bạn bè từ API
+  async loadFriends() {
+    try {
+      const res = await fetch('/api/friends', { credentials: "include" });
+      if (!res.ok) throw new Error("Không thể tải danh sách bạn bè!");
+      this.friends = await res.json();
+      console.log(this.friends);
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  // Mở modal tạo nhóm và load danh sách bạn bè
+  async openCreateGroupModal() {
+    await this.loadFriends();
+    this.showCreateGroupModal = true;
+    this.requestUpdate();
+  }
+
+  // Xử lý tạo nhóm khi submit form
+  async createGroup(e) {
+    e.preventDefault();
+    const nameInput = this.shadowRoot.querySelector("#group-name");
+    const selectEl = this.shadowRoot.querySelector("#friends-select");
+
+    const name = nameInput.value.trim();
+    // Lấy danh sách friend_id được chọn
+    const selectedFriendIds = Array.from(selectEl.selectedOptions).map(option => option.value);
+
+    // Kiểm tra số lượng thành viên: creator được tự động thêm vào, nên cần chọn tối thiểu 2 bạn nữa
+    if (selectedFriendIds.length < 2) {
+      alert("Cần ít nhất 3 thành viên (bao gồm bạn)!");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/groups/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, member_ids: selectedFriendIds })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        this.groups = [...this.groups, data.group];
+        console.log(this.groups)
+        alert("Tạo nhóm thành công!");
+        this.closeModal();
+      } else {
+        alert(data.message || "Lỗi khi tạo nhóm");
+      }
+    } catch (error) {
+      console.error("❌ Lỗi khi tạo nhóm:", error);
+    }
+  }
+
+  // Đóng modal
+  closeModal() {
+    this.showCreateGroupModal = false;
+    this.requestUpdate();
+  }
+
   render() {
     return html`
       <div class="chat-container">
         <div class="group-list">
           <h3>Nhóm Chat</h3>
+          <button @click="${this.openCreateGroupModal}">Tạo nhóm</button>
           <ul>
             ${this.groups.map((group) => html`
                 <li @click="${() => this.selectGroup(group)}">${group.name}</li>
               `
-            )}
+    )}
       </ul>
       </div>
         <div class="chat-box">
-          ${this.selectedGroup? html`
+          ${this.selectedGroup ? html`
                 <h3>Nhóm: ${this.selectedGroup.name}</h3>
                   <div class="messages">
                   ${this.messages.map((msg) => html`
                     <div class="message ${msg.sender} ${msg.reaction ? 'has-reaction' : ''}" data-id="${msg.id}
                     " @contextmenu="${(e) => this.showContextMenu(e, msg.id)}">
                     <div class="email">${msg.email}</div> 
-                    <div class="content">
-                      ${msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>` : msg.content}
-                    </div>
+                  <div class="content">
+                  ${this.editingMessageId === msg.id ? html`
+                      <input type="text" .value="${this.editingMessageContent}"
+                        @input="${(e) => this.editingMessageContent = e.target.value}" />
+                      <button @click="${() => this.saveEditedMessage(msg.id)}">Lưu</button>
+                      <button @click="${() => this.cancelEditing()}">Hủy</button>`
+        : msg.is_edited ? html`
+                        <span class="edited-text" @click="${() => this.toggleEditHistory(msg.id)}">
+                          ${msg.content} <span class="edited-label">(Đã chỉnh sửa)</span>
+                        </span>
+                        ${this.showEditHistoryId === msg.id ? html`
+                          <div class="edit-history">
+                            ${this.editHistory[msg.id]?.map(edit => html`
+                              <div class="edit-item">${edit.previous_content}</div>
+                            `) ?? ''}
+                          </div>
+                        ` : ''}
+                      `
+          : (msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>` : msg.content)
+      }
+                </div>
                    ${msg.reaction ? html`
                     <div class="reaction">${msg.reaction}</div>
                   ` : ""}  
@@ -511,10 +641,10 @@ export class ChatRoom extends LitElement {
                 ${!msg.is_recalled ? html`
                     <div class="emoji-picker">
                       ${["😍", "😂", "👍", "❤️"].map(
-                        (emoji) => html`
+        (emoji) => html`
                           <button @click="${() => this.reactToMessage(msg.id, emoji)}">${emoji}</button>
                         `
-                      )}
+      )}
                     </div>
                   ` : ""}
                   `)}
@@ -527,28 +657,49 @@ export class ChatRoom extends LitElement {
               `
         : html`<p>Chọn nhóm để bắt đầu chat</p>`}
       </div>
-    </div>
+      </div>
+        ${this.contextMenuVisible ? html`
+        <div class="context-menu"
+          style="top: ${this.contextMenuPosition.top}px; left: ${this.contextMenuPosition.left}px;"
+          @click="${(e) => e.stopPropagation()}">
+          ${(() => {
+          const msg = this.messages.find(msg => msg.id === this.selectedMessageId);
+          if (!msg) return null;
 
-      ${this.contextMenuVisible ? html`
-      <div class="context-menu"
-        style="top: ${this.contextMenuPosition.top}px; left: ${this.contextMenuPosition.left}px;"
-        @click="${(e) => e.stopPropagation()}">
-        ${(() => {
-              const msg = this.messages.find(msg => msg.id === this.selectedMessageId);
-              if (!msg) return null;
-
-              return html`
-            ${!msg.is_recalled
-                  ? html`<button @click="${() => this.recallMessage(this.selectedMessageId)}">Thu hồi tin nhắn</button>`
-                  : ""}
-          <button @click="${() => this.deleteMessage(this.selectedMessageId)}">Xóa tin nhắn</button>
-          `;
+          return html`
+              ${!msg.is_recalled
+              ? html`<button @click="${() => this.recallMessage(this.selectedMessageId)}">Thu hồi tin nhắn</button>
+                    <button @click="${() => this.startEditingMessage(this.selectedMessageId)}">Chỉnh sửa tin nhắn</button>`
+              : ""}
+            <button @click="${() => this.deleteMessage(this.selectedMessageId)}">Xóa tin nhắn</button>
+            `;
         })()}
       </div>
+        ` : ''}
 
+  <!-- Modal tạo nhóm -->
+      ${this.showCreateGroupModal ? html`
+        <div class="modal">
+          <h3>Tạo nhóm mới</h3>
+          <form @submit="${this.createGroup}">
+            <input type="text" id="group-name" placeholder="Tên nhóm" required />
+            <label for="friends-select">Chọn bạn bè:</label>
+            <select id="friends-select" multiple size="5">
+              ${this.friends.map(friend => html`
+                <option value="${friend.id}">
+                  ${friend.email || friend.id}
+                </option>
+              `)}
+            </select>
+            <div>
+              <button type="submit">Tạo nhóm</button>
+              <button type="button" @click="${this.closeModal}">Hủy</button>
+            </div>
+          </form>
+        </div>
       ` : ''}
-
-    `;
+      
+      `;
   }
 }
 

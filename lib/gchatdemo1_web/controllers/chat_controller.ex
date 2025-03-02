@@ -14,13 +14,48 @@ defmodule Gchatdemo1Web.ChatController do
     json(conn, messages)
   end
 
-  def create_group(conn, %{"name" => name, "creator_id" => creator_id}) do
-    case Chat.create_group(%{name: name, is_group: true, creator_id: creator_id}) do
-      {:ok, group} -> json(conn, %{status: "ok", group: group})
-      {:error, changeset} -> json(conn, %{status: "error", errors: changeset.errors})
+  def create_group(conn, %{"name" => name, "member_ids" => member_ids}) do
+    with %{id: creator_id} <- conn.assigns[:current_user] do
+      member_ids = Enum.uniq(member_ids)
+
+      case Chat.create_group(%{name: name, creator_id: creator_id, member_ids: member_ids}) do
+        {:ok, group} ->
+          conn
+          |> put_status(:ok)
+          |> json(%{status: "ok", group: group})
+
+        {:error, :not_enough_members} ->
+          conn
+          |> put_status(:bad_request)
+          |> json(%{status: "error", message: "Cần ít nhất 3 thành viên để tạo nhóm"})
+
+        {:error, :member_insert_failed} ->
+          conn
+          |> put_status(:internal_server_error)
+          |> json(%{status: "error", message: "Lỗi khi thêm thành viên"})
+
+        {:error, changeset} ->
+          conn
+          |> put_status(:unprocessable_entity)
+          |> json(%{status: "error", errors: changeset.errors})
+      end
+    else
+      _ ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{status: "error", message: "Unauthorized"})
     end
   end
 
+  def get_friends(conn, _params) do
+      conn = assign(conn, :current_user, %{id: 2})
+
+    current_user = conn.assigns[:current_user]
+    friends = Chat.list_friends(current_user.id)
+    json(conn, friends)
+  end
+
+  # chưa làm
   def add_member(conn, %{"conversation_id" => conversation_id, "user_id" => user_id}) do
     case Chat.add_member(conversation_id, user_id) do
       {:ok, member} -> json(conn, %{status: "ok", member: member})
