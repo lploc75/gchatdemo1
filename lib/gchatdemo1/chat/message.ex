@@ -17,7 +17,7 @@ defmodule Gchatdemo1.Chat.Message do
     field :is_forwarded, :boolean, default: false
     belongs_to :original_sender, Gchatdemo1.Accounts.User, foreign_key: :original_sender_id
     has_many :message_edits, Gchatdemo1.Chat.MessageEdit
-
+    has_many :reactions, Gchatdemo1.Chat.Reaction
     timestamps()
   end
 

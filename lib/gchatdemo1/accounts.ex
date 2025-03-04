@@ -5,9 +5,11 @@ defmodule Gchatdemo1.Accounts do
 
   import Ecto.Query, warn: false
   alias Gchatdemo1.Repo
-
   alias Gchatdemo1.Accounts.{User, UserToken, UserNotifier}
-
+  # Thêm alias cho Friendship
+  alias Gchatdemo1.Accounts.{User, Friendship}
+  alias Gchatdemo1.Chat.Conversation
+  alias Gchatdemo1.Chat.GroupMember
   ## Database getters
 
   @doc """
@@ -230,7 +232,6 @@ defmodule Gchatdemo1.Accounts do
   Gets the user with the given signed token.
   """
   def get_user_by_session_token(token) do
-
     {:ok, query} = UserToken.verify_session_token_query(token)
     Repo.one(query)
   end
@@ -352,7 +353,7 @@ defmodule Gchatdemo1.Accounts do
     end
   end
 
-@doc """
+  @doc """
   Cập nhật avatar của người dùng.
 
   ## Examples
@@ -369,18 +370,193 @@ defmodule Gchatdemo1.Accounts do
     |> Repo.update()
   end
 
-# Trả về một changeset để kiểm tra hoặc hiển thị form mà không thay đổi dữ liệu trong database.
-# Kiểm tra xem dữ liệu có hợp lệ không trước khi lưu vào database
-def change_user_display_name(%User{} = user, attrs \\ %{}) do
-  User.display_name_changeset(user, attrs)
-end
+  # Trả về một changeset để kiểm tra hoặc hiển thị form mà không thay đổi dữ liệu trong database.
+  # Kiểm tra xem dữ liệu có hợp lệ không trước khi lưu vào database
+  def change_user_display_name(%User{} = user, attrs \\ %{}) do
+    User.display_name_changeset(user, attrs)
+  end
 
-#  Cập nhật vào database
-def update_user_display_name(%User{} = user, attrs) do
-  user
-  |> User.display_name_changeset(attrs)
-  |> Repo.update()
-end
+  #  Cập nhật vào database
+  def update_user_display_name(%User{} = user, attrs) do
+    user
+    |> User.display_name_changeset(attrs)
+    |> Repo.update()
+  end
 
+  # Tìm dựa trên email
+  def search_user_by_email(email) do
+    Repo.get_by(User, email: email)
+  end
 
+  # Gửi yêu cầu kết bạn
+  def send_friend_request(user_id, friend_id) do
+    case Repo.get_by(Friendship, user_id: user_id, friend_id: friend_id) do
+      nil ->
+        %Friendship{}
+        |> Friendship.changeset(%{user_id: user_id, friend_id: friend_id, status: "pending"})
+        |> Repo.insert()
+    end
+  end
+
+  # Hủy yêu cầu kết bạn
+  def cancel_friend_request(user_id, friend_id) do
+    case Repo.get_by(Friendship, user_id: user_id, friend_id: friend_id, status: "pending") do
+      nil -> {:error, "No pending request"}
+      request -> Repo.delete(request)
+    end
+  end
+
+  # Lấy trạng thái của mối quan hệ bạn bè
+  def get_friendship_status(current_user, target_user) do
+    query =
+      from f in Friendship,
+        where:
+          (f.user_id == ^current_user.id and f.friend_id == ^target_user.id) or
+            (f.user_id == ^target_user.id and f.friend_id == ^current_user.id)
+
+    case Repo.one(query) do
+      nil -> nil
+      friendship -> friendship.status
+    end
+  end
+
+  # Lấy danh sách lời mời kết bạn đang chờ xử lý
+  def list_pending_friend_requests(user_id) do
+    Repo.all(
+      from f in Friendship,
+        where: f.friend_id == ^user_id and f.status == "pending",
+        join: u in User,
+        on: u.id == f.user_id,
+        select: %{id: f.id, user_id: f.user_id, email: u.email}
+    )
+  end
+
+  # Chấp nhận lời mời kết bạn
+  def accept_friend_request(request_id) do
+    Repo.transaction(fn ->
+      case Repo.get(Friendship, request_id) do
+        nil ->
+          Repo.rollback({:error, "Request not found"})
+
+        request ->
+          # Cập nhật trạng thái lời mời thành "accepted"
+          request
+          |> Friendship.changeset(%{status: "accepted"})
+          |> Repo.update!()
+
+          # Lấy thông tin của người gửi và người nhận lời mời
+          friend = Repo.get!(User, request.user_id)
+
+          # Kiểm tra xem đã có cuộc trò chuyện riêng tư giữa 2 người hay chưa
+          query =
+            from(c in Conversation,
+              where: c.is_group == false,
+              join: m1 in GroupMember,
+              on: m1.conversation_id == c.id,
+              join: m2 in GroupMember,
+              on: m2.conversation_id == c.id,
+              where: m1.user_id == ^request.user_id and m2.user_id == ^request.friend_id,
+              select: c
+            )
+
+          conversation = Repo.one(query)
+
+          conversation =
+            if conversation do
+              # Nếu cuộc trò chuyện đã tồn tại, sử dụng luôn conversation đó
+              conversation
+            else
+              # Nếu chưa có, tạo cuộc trò chuyện mới
+              conversation_changeset =
+                Conversation.changeset(%Conversation{}, %{
+                  name: friend.email,
+                  is_group: false,
+                  creator_id: request.user_id
+                })
+
+              conversation = Repo.insert!(conversation_changeset)
+
+              # Thêm cả 2 người vào bảng group_members
+              members = [
+                %GroupMember{conversation_id: conversation.id, user_id: request.user_id},
+                %GroupMember{conversation_id: conversation.id, user_id: request.friend_id}
+              ]
+
+              Enum.each(members, &Repo.insert!/1)
+
+              conversation
+            end
+
+          {:ok, conversation}
+      end
+    end)
+  end
+
+  # Từ chối lời mời kết bạn
+  def decline_friend_request(request_id) do
+    case Repo.get(Friendship, request_id) do
+      nil -> {:error, "Request not found"}
+      request -> Repo.delete(request)
+    end
+  end
+
+  # Lấy danh sách bạn bè đã kết bạn
+  def list_friends(user_id) do
+    Repo.all(
+      from f in Friendship,
+        where: (f.user_id == ^user_id or f.friend_id == ^user_id) and f.status == "accepted",
+        join: u in User,
+        on:
+          (u.id == f.friend_id and f.user_id == ^user_id) or
+            (u.id == f.user_id and f.friend_id == ^user_id),
+        select: %{id: f.id, friend_id: u.id, email: u.email}
+    )
+  end
+
+  # <---- THÊM HÀM GET_USER ---->
+  @doc """
+  Gets a user by ID.
+  Returns nil if not found.
+  """
+  def get_user(id) do
+    Repo.get(User, id)
+  end
+
+  # lấy trạng thái hoạt động
+  def get_user_status(user_id) do
+    user = Repo.get(User, user_id)
+
+    if user do
+      now = DateTime.utc_now()
+      last_seen = user.last_active_at || DateTime.from_unix!(0)
+      diff = DateTime.diff(now, last_seen, :minute)
+
+      cond do
+        diff < 5 -> "Đang hoạt động"
+        diff < 60 -> "Hoạt động #{diff} phút trước"
+        diff < 1440 -> "Hoạt động #{div(diff, 60)} giờ trước"
+        true -> "Hoạt động #{div(diff, 1440)} ngày trước"
+      end
+    else
+      "Không rõ"
+    end
+  end
+
+  # Hàm hủy kết bạn
+  def unfriend(user_id, friend_id) do
+    query =
+      from f in Friendship,
+        where:
+          (f.user_id == ^user_id and f.friend_id == ^friend_id) or
+            (f.user_id == ^friend_id and f.friend_id == ^user_id),
+        where: f.status == "accepted"
+
+    case Repo.one(query) do
+      nil ->
+        {:error, "Không tìm thấy kết bạn"}
+
+      friendship ->
+        Repo.delete(friendship)
+    end
+  end
 end

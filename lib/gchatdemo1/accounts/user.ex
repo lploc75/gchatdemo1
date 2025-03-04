@@ -168,15 +168,15 @@ defmodule Gchatdemo1.Accounts.User do
   def avatar_changeset(user, attrs) do
     user
     |> cast(attrs, [:avatar_url])
+
     # |> validate_required([:avatar_url])
     # |> validate_format(:avatar_url, ~r/^https?:\/\/[\S]+$/, message: "Invalid URL format")
   end
 
   def display_name_changeset(user, attrs) do
-  user
-  |> cast(attrs, [:display_name])
-  |> validate_required([:display_name])
-  |> validate_length(:display_name, min: 3, max: 50)
-end
-
+    user
+    |> cast(attrs, [:display_name])
+    |> validate_required([:display_name])
+    |> validate_length(:display_name, min: 3, max: 50)
+  end
 end

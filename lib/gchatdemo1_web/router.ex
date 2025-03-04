@@ -15,14 +15,29 @@ defmodule Gchatdemo1Web.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
-    plug :fetch_session  # ⚠️ Cần có dòng này!
-    plug :fetch_current_user # ⚠️ Cần có dòng này!
+    # ⚠️ Cần có dòng này!
+    plug :fetch_session
+    # ⚠️ Cần có dòng này!
+    plug :fetch_current_user
   end
 
   scope "/", Gchatdemo1Web do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/dashboard", PageController, :dashboard
+    post "/dashboard", PageController, :dashboard
+    post "/users/:id/send_request", PageController, :send_friend_request
+    post "/users/:id/cancel_request", PageController, :cancel_friend_request
+    # Route hiển thị danh sách lời mời
+    get "/friend_requests", PageController, :friend_requests
+    # Route xử lý chấp nhận/từ chối lời mời
+    post "/friend_requests/:id/accept", PageController, :accept_friend_request
+    post "/friend_requests/:id/decline", PageController, :decline_friend_request
+    # Hiện thị danh sách bạn bè
+    get "/friends", PageController, :friends
+    # Thêm route hủy kết bạn
+    delete "/unfriend/:friend_id", PageController, :unfriend
   end
 
   # Other scopes may use custom stacks.
@@ -90,11 +105,15 @@ defmodule Gchatdemo1Web.Router do
   scope "/api", Gchatdemo1Web do
     pipe_through :api
 
-    get "/user_token", UserSessionController, :get_token # Thêm route này để lấy token
+    # Thêm route này để lấy token
+    get "/user_token", UserSessionController, :get_token
 
-    get "/friends", ChatController, :get_friends # Lấy danh sách bạn bè của người dùng
-    get "/groups", ChatController, :get_groups  # Lấy dánh sách nhóm của người dùng
-    get "/messages/:conversation_id", ChatController, :get_messages  # Đổi list_messages thành get_messages
+    # Lấy danh sách bạn bè của người dùng
+    get "/friends", ChatController, :get_friends
+    # Lấy dánh sách nhóm của người dùng
+    get "/groups", ChatController, :get_groups
+    # Đổi list_messages thành get_messages
+    get "/messages/:conversation_id", ChatController, :get_messages
 
     post "/groups/update", ChatController, :update_group
     post "/groups/create", ChatController, :create_group
@@ -102,4 +121,13 @@ defmodule Gchatdemo1Web.Router do
     # post "/messages", ChatController, :send_message
   end
 
+  scope "/", Gchatdemo1Web do
+    pipe_through :browser
+
+    live_session :authenticated_messaging,
+      on_mount: [{Gchatdemo1Web.UserAuth, :ensure_authenticated}] do
+      live "/messages/new", MessageLive, :new
+      live "/messages/:conversation_id", MessageLive, :chat
+    end
+  end
 end

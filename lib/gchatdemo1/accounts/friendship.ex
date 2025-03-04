@@ -1,4 +1,4 @@
-defmodule Gchatdemo1.Chat.Friendship do
+defmodule Gchatdemo1.Accounts.Friendship do
   use Ecto.Schema
   import Ecto.Changeset
 

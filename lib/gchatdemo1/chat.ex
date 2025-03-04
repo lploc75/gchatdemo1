@@ -1,14 +1,14 @@
 defmodule Gchatdemo1.Chat do
   import Ecto.Query, warn: false
   alias Gchatdemo1.Repo
-  alias Gchatdemo1.Chat.{Conversation, GroupMember, Message, Reaction, MessageEdit, Friendship}
-  alias Gchatdemo1.Accounts.User
+  alias Gchatdemo1.Chat.{Conversation, GroupMember, Message, Reaction, MessageEdit}
+  alias Gchatdemo1.Accounts.{User, Friendship}
   @doc "Lấy danh sách các nhóm chat"
   def list_groups_for_user(user_id) do
     from(c in Gchatdemo1.Chat.Conversation,
       join: gm in Gchatdemo1.Chat.GroupMember,
       on: c.id == gm.conversation_id,
-      where: gm.user_id == ^user_id,
+      where: gm.user_id == ^user_id and c.is_group == true,
       select: c
     )
     |> Repo.all()

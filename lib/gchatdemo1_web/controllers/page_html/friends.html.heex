@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Danh sách bạn bè</title>
+</head>
+
+<body>
+    <h1>Danh sách bạn bè</h1>
+
+    <%= if @friends==[] do %>
+        <p>Bạn chưa có bạn bè nào.</p>
+        <% else %>
+            <ul>
+                <%= for friend <- @friends do %>
+                    <li>
+                        <p>Email: <%= friend.email %>
+                        </p>
+                        <p>ID: <%= friend.friend_id %>
+                        </p>
+                        <!-- Thêm nút hủy kết bạn -->
+                        <form action={~p"/unfriend/#{friend.friend_id}"} method="post">
+                            <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()}>
+                            <input type="hidden" name="_method" value="delete">
+                            <button type="submit">Hủy kết bạn</button>
+                        </form>
+                    </li>
+                    <% end %>
+            </ul>
+            <% end %>
+
+                <!-- Thêm liên kết quay lại -->
+                <a id="Dashboard" href={~p"/dashboard"}
+                    class="inline-block px-6 py-3 bg-blue-500 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition duration-300">
+                    Quay lại Dashboard
+                </a>
+
+</body>
+
+</html>
