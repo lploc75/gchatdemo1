@@ -1,7 +1,7 @@
 defmodule Gchatdemo1Web.ChatController do
   use Gchatdemo1Web, :controller
   alias Gchatdemo1.Chat
-
+  alias Gchatdemo1.Repo
   def get_groups(conn, _params) do
     user = conn.assigns[:current_user]  # Lấy thông tin user từ assigns
     groups = Chat.list_groups_for_user(user.id)  # Gọi hàm từ module Chat để lấy danh sách nhóm cho user
@@ -12,6 +12,12 @@ defmodule Gchatdemo1Web.ChatController do
     user = conn.assigns[:current_user]  # Lấy thông tin user từ assigns
     messages = Chat.list_messages(conversation_id, user.id)
     json(conn, messages)
+  end
+
+  def get_friends(conn, _params) do
+    current_user = conn.assigns[:current_user]
+    friends = Chat.list_friends(current_user.id)
+    json(conn, friends)
   end
 
   def create_group(conn, %{"name" => name, "member_ids" => member_ids}) do
@@ -47,11 +53,25 @@ defmodule Gchatdemo1Web.ChatController do
     end
   end
 
-  def get_friends(conn, _params) do
-    current_user = conn.assigns[:current_user]
-    friends = Chat.list_friends(current_user.id)
-    json(conn, friends)
+  def update_group(conn, %{"id" => id, "conversation" => conversation_params}) do
+    # Lấy conversation từ database dựa trên ID
+    # Repo.get!/2 sẽ ném lỗi nếu không tìm thấy, có thể thay bằng Repo.get/2 để xử lý lỗi mềm
+    conversation = Repo.get!(Gchatdemo1.Chat.Conversation, id)
+
+    # Gọi hàm update_conversation để cập nhật thông tin nhóm
+    case Chat.update_conversation(conversation, conversation_params) do
+      {:ok, updated_conversation} ->
+        # Nếu cập nhật thành công, trả về JSON với status "ok"
+        json(conn, %{status: "ok", conversation: updated_conversation})
+
+      {:error, changeset} ->
+        # Nếu có lỗi validate, trả về HTTP 422 với danh sách lỗi
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{errors: changeset.errors}) # Cần xử lý lỗi rõ ràng hơn
+    end
   end
+
 
   # chưa làm
   def add_member(conn, %{"conversation_id" => conversation_id, "user_id" => user_id}) do

@@ -96,6 +96,7 @@ defmodule Gchatdemo1Web.Router do
     get "/groups", ChatController, :get_groups  # Lấy dánh sách nhóm của người dùng
     get "/messages/:conversation_id", ChatController, :get_messages  # Đổi list_messages thành get_messages
 
+    post "/groups/update", ChatController, :update_group
     post "/groups/create", ChatController, :create_group
     post "/groups/add_member", ChatController, :add_member
     # post "/messages", ChatController, :send_message

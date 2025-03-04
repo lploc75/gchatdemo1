@@ -101,6 +101,11 @@ export class ChatRoom extends LitElement {
     margin-top: 10px; 
     gap: 8px;
   }
+  
+/* Buộc ẩn form ngay cả khi display: flex có mặt */
+  .message-input[hidden] {
+    display: none !important;
+  }
 
   input { 
     flex: 1; 
@@ -196,6 +201,7 @@ export class ChatRoom extends LitElement {
 .message.has-reaction {
   margin-bottom: 15px; /* Tăng khoảng cách giữa các tin nhắn có emoji */
 }
+  
 `;
 
   static properties = {
@@ -267,8 +273,8 @@ export class ChatRoom extends LitElement {
 
   async selectGroup(group) {
     this.selectedGroup = group;
+    console.log("🚀 Đã chọn nhóm:", group);
     this.messages = [];
-
     try {
       const res = await fetch(`/api/messages/${group.id}`);
       if (!res.ok) throw new Error("Không thể tải tin nhắn!");
@@ -392,6 +398,7 @@ export class ChatRoom extends LitElement {
       const res = await fetch("/api/groups");
       if (!res.ok) throw new Error("Không thể tải nhóm!");
       this.groups = await res.json();
+      console.log(this.groups);
     } catch (error) {
       console.error(error);
     }
@@ -592,7 +599,68 @@ export class ChatRoom extends LitElement {
     this.requestUpdate();
   }
 
+  openEditGroupModal(event, group) {
+    event.stopPropagation(); // Ngăn chặn sự kiện click lan ra ngoài
+    this.editingGroup = group;
+    this.editingGroupName = group.name;
+    this.onlyAdminCanMessage = group.only_admin_can_message; // ✅ Cập nhật checkbox
+    this.visibility = group.visibility; // ✅ Cập nhật dropdown
+    this.showEditGroupModal = true;
+    this.requestUpdate();
+  }
+
+  closeEditGroupModal() {
+    this.showEditGroupModal = false;
+    this.requestUpdate();
+  }
+
+  async saveGroupEdit() {
+    if (!this.editingGroup || !this.editingGroupName.trim()) return;
+
+    try {
+      const res = await fetch("/api/groups/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: this.editingGroup.id,
+          conversation: {
+            name: this.editingGroupName.trim(),
+            only_admin_can_message: this.onlyAdminCanMessage,
+            visibility: this.visibility
+          }
+        })
+      });
+
+      if (!res.ok) throw new Error("Không thể cập nhật nhóm!");
+
+      const data = await res.json();
+      if (data.status === "ok") {
+        // Cập nhật UI
+        this.groups = this.groups.map(group =>
+          group.id === this.editingGroup.id
+            ? {
+              ...group,
+              name: this.editingGroupName.trim(),
+              only_admin_can_message: this.onlyAdminCanMessage,
+              visibility: this.visibility
+            }
+            : group
+        );
+        this.closeEditGroupModal();
+      } else {
+        alert("Lỗi cập nhật nhóm!");
+      }
+    } catch (error) {
+      console.error("❌ Lỗi khi chỉnh sửa nhóm:", error);
+      alert("Không thể cập nhật nhóm!");
+    }
+  }
+
   render() {
+    
+    // console.log("🔍 onlyAdminCanMessage:", this.selectedGroup?.only_admin_can_message);
+    // console.log("👤 user_id:", this.userId);
+    // console.log("👑 creator_id:", this.selectedGroup?.creator_id);
     return html`
       <div class="chat-container">
         <div class="group-list">
@@ -600,10 +668,12 @@ export class ChatRoom extends LitElement {
           <button @click="${this.openCreateGroupModal}">Tạo nhóm</button>
           <ul>
             ${this.groups.map((group) => html`
-                <li @click="${() => this.selectGroup(group)}">${group.name}</li>
-              `
-    )}
-      </ul>
+              <li>
+                <span @click="${() => this.selectGroup(group)}">${group.name}</span>
+                <button class="menu-button" @click="${(e) => this.openEditGroupModal(e, group)}">⋮</button>
+              </li>
+            `)}
+          </ul>
       </div>
         <div class="chat-box">
           ${this.selectedGroup ? html`
@@ -634,13 +704,13 @@ export class ChatRoom extends LitElement {
           : (msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>` : msg.content)
       }
                 </div>
-                   ${msg.reaction ? html`
-                    <div class="reaction">${msg.reaction}</div>
-                  ` : ""}  
+                  ${msg.reaction ? html`
+                  <div class="reaction">${msg.reaction}</div>
+                ` : ""}  
                 <!-- Nút thả emoji ẩn, hiện khi hover -->
                 ${!msg.is_recalled ? html`
-                    <div class="emoji-picker">
-                      ${["😍", "😂", "👍", "❤️"].map(
+                  <div class="emoji-picker">
+                  ${["😍", "😂", "👍", "❤️"].map(
         (emoji) => html`
                           <button @click="${() => this.reactToMessage(msg.id, emoji)}">${emoji}</button>
                         `
@@ -650,10 +720,12 @@ export class ChatRoom extends LitElement {
                   `)}
                 </div>
 
-                <form @submit="${this.sendMessage}" class="message-input">
-                  <input id="message-input" type="text" placeholder="Nhập tin nhắn..." />
-                  <button type="submit">Send</button>
-                </form>
+ <form @submit="${this.sendMessage}" class="message-input" 
+            ?hidden="${this.selectedGroup?.only_admin_can_message && this.userId !== this.selectedGroup?.creator_id}">
+        <input id="message-input" type="text" placeholder="Nhập tin nhắn..." />
+        <button type="submit">Gửi</button>
+      </form>
+
               `
         : html`<p>Chọn nhóm để bắt đầu chat</p>`}
       </div>
@@ -698,6 +770,46 @@ export class ChatRoom extends LitElement {
           </form>
         </div>
       ` : ''}
+      <!-- Modal chỉnh sửa nhóm -->
+      ${this.showEditGroupModal ? html`
+        <div class="modal-overlay">
+          <div class="modal">
+            <h3>Chỉnh sửa nhóm</h3>
+            <form @submit="${this.saveGroupEdit}">
+              <input type="hidden" .value="${this.editingGroup?.id}" />
+              
+              <!-- Nhập tên nhóm -->
+              <input type="text"
+                     .value="${this.editingGroupName}"
+                     @input="${(e) => this.editingGroupName = e.target.value}"
+                     placeholder="Tên nhóm" required />
+      
+              <!-- Chỉ admin có thể nhắn tin -->
+              <label>
+                <input type="checkbox"
+                       .checked="${this.onlyAdminCanMessage}"
+                       @change="${(e) => this.onlyAdminCanMessage = e.target.checked}" />
+                Chỉ admin có thể nhắn tin
+              </label>
+      
+              <!-- Chọn chế độ nhóm -->
+              <label for="visibility">Chế độ nhóm:</label>
+              <select id="visibility"
+                      .value="${this.visibility}"
+                      @change="${(e) => this.visibility = e.target.value}">
+                <option value="public">Công khai</option>
+                <option value="private">Riêng tư</option>
+              </select>
+      
+              <div>
+                <button type="submit">Lưu</button>
+                <button type="button" @click="${this.closeEditGroupModal}">Hủy</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ` : ''}
+      
       
       `;
   }

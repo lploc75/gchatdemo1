@@ -14,7 +14,7 @@ defmodule Gchatdemo1.Chat do
     |> Repo.all()
   end
 
-   @doc "Lấy danh sách tin nhắn của một nhóm chat kèm emoji reactions"
+  @doc "Lấy danh sách tin nhắn của một nhóm chat kèm emoji reactions"
   # cần lấy thêm is_recalled để hiển thị tin nhắn đã thu hồi
   def list_messages(conversation_id, user_id) do
     from(m in Message,
@@ -93,19 +93,29 @@ defmodule Gchatdemo1.Chat do
     end
   end
 
-def list_friends(current_user_id) do
-  query =
-    from f in Friendship,
-      join: u in User,
-      on: u.id == fragment("CASE WHEN ? = ? THEN ? WHEN ? = ? THEN ? END", f.user_id, ^current_user_id, f.friend_id, f.friend_id, ^current_user_id, f.user_id),
-      where: (f.user_id == ^current_user_id or f.friend_id == ^current_user_id) and f.status == "accepted",
-      select: %{id: u.id, email: u.email}
+  def list_friends(current_user_id) do
+    query =
+      from f in Friendship,
+        join: u in User,
+        on:
+          u.id ==
+            fragment(
+              "CASE WHEN ? = ? THEN ? WHEN ? = ? THEN ? END",
+              f.user_id,
+              ^current_user_id,
+              f.friend_id,
+              f.friend_id,
+              ^current_user_id,
+              f.user_id
+            ),
+        where:
+          (f.user_id == ^current_user_id or f.friend_id == ^current_user_id) and
+            f.status == "accepted",
+        select: %{id: u.id, email: u.email}
 
-  Repo.all(query)
-end
+    Repo.all(query)
+  end
 
-
-  @spec create_group(any()) :: any()
   def create_group(attrs \\ %{}) do
     Repo.transaction(fn ->
       # Đảm bảo không trùng
@@ -139,6 +149,13 @@ end
 
       conversation
     end)
+  end
+
+  # Cập nhật thông tin conversation (nhóm)
+  def update_conversation(%Conversation{} = conversation, attrs) do
+    conversation
+    |> Conversation.changeset(attrs)
+    |> Repo.update()
   end
 
   @spec add_member(any(), any()) :: any()
