@@ -48,8 +48,6 @@ defmodule Gchatdemo1Web.ChatController do
   end
 
   def get_friends(conn, _params) do
-      conn = assign(conn, :current_user, %{id: 2})
-
     current_user = conn.assigns[:current_user]
     friends = Chat.list_friends(current_user.id)
     json(conn, friends)
