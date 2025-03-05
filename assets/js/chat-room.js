@@ -895,8 +895,9 @@ export class ChatRoom extends LitElement {
                 <option value="private">Riêng tư</option>
               </select>
       
-              <!-- Nút mở modal thêm thành viên -->
-              <button type="button" @click="${this.openAddMemberModal}">Thêm thành viên</button>
+              ${!(this.visibility === "private" && this.userId !== this.editingGroup?.admin_user_id)  
+              ? html`<button type="button" @click="${this.openAddMemberModal}">Thêm thành viên</button>` 
+              : ''}
 
               <!-- Nút mở modal danh sách thành viên -->
               <button type="button" @click="${this.openMemberListModal}">Xem thành viên</button>
