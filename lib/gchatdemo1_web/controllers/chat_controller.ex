@@ -6,9 +6,8 @@ defmodule Gchatdemo1Web.ChatController do
   def get_groups(conn, _params) do
     # Lấy thông tin user từ assigns
     user = conn.assigns[:current_user]
-    user_id = 1
     # Gọi hàm từ module Chat để lấy danh sách nhóm cho user
-    groups = Chat.list_groups_for_user(user_id)
+    groups = Chat.list_groups_for_user(user.id)
     # Trả về JSON response
     json(conn, groups)
   end
@@ -94,9 +93,7 @@ defmodule Gchatdemo1Web.ChatController do
 
   def available_friends(conn, %{"conversation_id" => conversation_id}) do
     user = conn.assigns[:current_user]
-    user_id = 1
-
-    friends = Chat.list_friends_not_in_group(user_id, conversation_id)
+    friends = Chat.list_friends_not_in_group(user.id, conversation_id)
     json(conn, %{friends: friends})
   end
 
