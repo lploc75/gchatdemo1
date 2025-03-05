@@ -2,14 +2,20 @@ defmodule Gchatdemo1Web.ChatController do
   use Gchatdemo1Web, :controller
   alias Gchatdemo1.Chat
   alias Gchatdemo1.Repo
+
   def get_groups(conn, _params) do
-    user = conn.assigns[:current_user]  # Lấy thông tin user từ assigns
-    groups = Chat.list_groups_for_user(user.id)  # Gọi hàm từ module Chat để lấy danh sách nhóm cho user
-    json(conn, groups)  # Trả về JSON response
+    # Lấy thông tin user từ assigns
+    user = conn.assigns[:current_user]
+    user_id = 1
+    # Gọi hàm từ module Chat để lấy danh sách nhóm cho user
+    groups = Chat.list_groups_for_user(user_id)
+    # Trả về JSON response
+    json(conn, groups)
   end
 
   def get_messages(conn, %{"conversation_id" => conversation_id}) do
-    user = conn.assigns[:current_user]  # Lấy thông tin user từ assigns
+    # Lấy thông tin user từ assigns
+    user = conn.assigns[:current_user]
     messages = Chat.list_messages(conversation_id, user.id)
     json(conn, messages)
   end
@@ -68,17 +74,30 @@ defmodule Gchatdemo1Web.ChatController do
         # Nếu có lỗi validate, trả về HTTP 422 với danh sách lỗi
         conn
         |> put_status(:unprocessable_entity)
-        |> json(%{errors: changeset.errors}) # Cần xử lý lỗi rõ ràng hơn
+        # Cần xử lý lỗi rõ ràng hơn
+        |> json(%{errors: changeset.errors})
     end
   end
 
+  def list_members(conn, %{"conversation_id" => conversation_id}) do
+    members = Chat.get_group_members(conversation_id)
 
-  # chưa làm
+    json(conn, %{status: "ok", members: members})
+  end
+
   def add_member(conn, %{"conversation_id" => conversation_id, "user_id" => user_id}) do
     case Chat.add_member(conversation_id, user_id) do
       {:ok, member} -> json(conn, %{status: "ok", member: member})
       {:error, changeset} -> json(conn, %{status: "error", errors: changeset.errors})
     end
+  end
+
+  def available_friends(conn, %{"conversation_id" => conversation_id}) do
+    user = conn.assigns[:current_user]
+    user_id = 1
+
+    friends = Chat.list_friends_not_in_group(user_id, conversation_id)
+    json(conn, %{friends: friends})
   end
 
   #  def send_message(conn, %{"user_id" => user_id, "conversation_id" => conversation_id, "content" => content}) do
@@ -95,5 +114,4 @@ defmodule Gchatdemo1Web.ChatController do
   #       json(conn, %{status: "error", errors: errors})
   #   end
   # end
-
 end

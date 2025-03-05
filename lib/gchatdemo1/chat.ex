@@ -3,13 +3,15 @@ defmodule Gchatdemo1.Chat do
   alias Gchatdemo1.Repo
   alias Gchatdemo1.Chat.{Conversation, GroupMember, Message, Reaction, MessageEdit}
   alias Gchatdemo1.Accounts.{User, Friendship}
-  @doc "Lấy danh sách các nhóm chat"
+  @doc "Lấy danh sách các nhóm chat và user_id của admin"
   def list_groups_for_user(user_id) do
     from(c in Gchatdemo1.Chat.Conversation,
       join: gm in Gchatdemo1.Chat.GroupMember,
       on: c.id == gm.conversation_id,
       where: gm.user_id == ^user_id and c.is_group == true,
-      select: c
+      left_join: admin in Gchatdemo1.Chat.GroupMember,
+      on: admin.conversation_id == c.id and admin.is_admin == true,
+      select: %{conversation: c, admin_user_id: admin.user_id}
     )
     |> Repo.all()
   end
@@ -116,6 +118,33 @@ defmodule Gchatdemo1.Chat do
     Repo.all(query)
   end
 
+  def list_friends_not_in_group(current_user_id, conversation_id) do
+    query =
+      from f in Friendship,
+        join: u in User,
+        on:
+          u.id ==
+            fragment(
+              "CASE WHEN ? = ? THEN ? WHEN ? = ? THEN ? END",
+              f.user_id,
+              ^current_user_id,
+              f.friend_id,
+              f.friend_id,
+              ^current_user_id,
+              f.user_id
+            ),
+        left_join: gm in GroupMember,
+        on: gm.user_id == u.id and gm.conversation_id == ^conversation_id,
+        # Chỉ lấy những người không có trong nhóm
+        where:
+          (f.user_id == ^current_user_id or f.friend_id == ^current_user_id) and
+            f.status == "accepted" and
+            is_nil(gm.id),
+        select: %{id: u.id, email: u.email}
+
+    Repo.all(query)
+  end
+
   def create_group(attrs \\ %{}) do
     Repo.transaction(fn ->
       # Đảm bảo không trùng
@@ -158,7 +187,16 @@ defmodule Gchatdemo1.Chat do
     |> Repo.update()
   end
 
-  @spec add_member(any(), any()) :: any()
+  @doc "Lấy danh sách thành viên của nhóm"
+  def get_group_members(conversation_id) do
+    from(gm in GroupMember,
+      where: gm.conversation_id == ^conversation_id,
+      join: u in assoc(gm, :user),
+      select: %{id: u.id, email: u.email}
+    )
+    |> Repo.all()
+  end
+
   @doc "Thêm thành viên vào nhóm"
   def add_member(conversation_id, user_id, is_admin \\ false) do
     %GroupMember{}
@@ -208,7 +246,7 @@ defmodule Gchatdemo1.Chat do
       nil ->
         {:error, "Message not found"}
 
-      %Message{user_id: ^user_id, conversation_id: conversation_id} = message ->
+      %Message{user_id: ^user_id} = message ->
         Repo.transaction(fn ->
           # 🔥 **Xóa tất cả reaction liên quan đến tin nhắn**
           Repo.delete_all(from r in Reaction, where: r.message_id == ^message_id)
@@ -216,11 +254,6 @@ defmodule Gchatdemo1.Chat do
           # Cập nhật tin nhắn thành "thu hồi"
           changeset = Ecto.Changeset.change(message, is_recalled: true)
           {:ok, updated_message} = Repo.update(changeset)
-
-          # 📢 Broadcast sự kiện để frontend cập nhật
-          # Gchatdemo1Web.Endpoint.broadcast("conversation:#{conversation_id}", "message_recalled", %{
-          #   id: message_id
-          # })
 
           updated_message
         end)

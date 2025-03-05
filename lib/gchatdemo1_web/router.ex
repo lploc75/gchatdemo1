@@ -110,8 +110,12 @@ defmodule Gchatdemo1Web.Router do
 
     # Lấy danh sách bạn bè của người dùng
     get "/friends", ChatController, :get_friends
+    # Lấy danh sách bạn bè chưa trong group
+    get "/conversations/:conversation_id/available_friends", ChatController, :available_friends
     # Lấy dánh sách nhóm của người dùng
     get "/groups", ChatController, :get_groups
+    # Lấy danh sách thành viên trong nhóm
+    get "/groups/:conversation_id/members", ChatController, :list_members
     # Đổi list_messages thành get_messages
     get "/messages/:conversation_id", ChatController, :get_messages
 

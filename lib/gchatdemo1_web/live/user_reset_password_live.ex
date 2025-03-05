@@ -6,8 +6,8 @@ defmodule Gchatdemo1Web.UserResetPasswordLive do
   def render(assigns) do
     ~H"""
     <div class="mx-auto max-w-sm">
-      <.header class="text-center">Reset Password</.header>
-
+      <.header class="text-center">Đặt lại mật khẩu</.header>
+      
       <.simple_form
         for={@form}
         id="reset_password_form"
@@ -15,24 +15,23 @@ defmodule Gchatdemo1Web.UserResetPasswordLive do
         phx-change="validate"
       >
         <.error :if={@form.errors != []}>
-          Oops, something went wrong! Please check the errors below.
+          Ồ, có lỗi xảy ra! Vui lòng kiểm tra lỗi bên dưới.
         </.error>
-
-        <.input field={@form[:password]} type="password" label="New password" required />
+         <.input field={@form[:password]} type="password" label="Mật khẩu mới" required />
         <.input
           field={@form[:password_confirmation]}
           type="password"
-          label="Confirm new password"
+          label="Xác nhận mật khẩu mới"
           required
         />
         <:actions>
-          <.button phx-disable-with="Resetting..." class="w-full">Reset Password</.button>
+          <.button phx-disable-with="Resetting..." class="w-full">Đặt lại mật khẩu</.button>
         </:actions>
       </.simple_form>
-
+      
       <p class="text-center text-sm mt-4">
-        <.link href={~p"/users/register"}>Register</.link>
-        | <.link href={~p"/users/log_in"}>Log in</.link>
+        <.link href={~p"/users/register"}>Đăng ký</.link>
+        | <.link href={~p"/users/log_in"}>Đăng nhập</.link>
       </p>
     </div>
     """

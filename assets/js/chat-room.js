@@ -550,6 +550,18 @@ export class ChatRoom extends LitElement {
     }
   }
 
+  async getNonGroupFriends(conversationId) {
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}/available_friends`, { credentials: "include" });
+      if (!res.ok) throw new Error("Không thể tải danh sách bạn bè!");
+      const data = await res.json();
+      this.friends = data.friends;
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+
   // Mở modal tạo nhóm và load danh sách bạn bè
   async openCreateGroupModal() {
     await this.loadFriends();
@@ -602,6 +614,7 @@ export class ChatRoom extends LitElement {
   openEditGroupModal(event, group) {
     event.stopPropagation(); // Ngăn chặn sự kiện click lan ra ngoài
     this.editingGroup = group;
+
     this.editingGroupName = group.name;
     this.onlyAdminCanMessage = group.only_admin_can_message; // ✅ Cập nhật checkbox
     this.visibility = group.visibility; // ✅ Cập nhật dropdown
@@ -614,53 +627,88 @@ export class ChatRoom extends LitElement {
     this.requestUpdate();
   }
 
-  async saveGroupEdit() {
-    if (!this.editingGroup || !this.editingGroupName.trim()) return;
+  async openAddMemberModal() {
+    await this.getNonGroupFriends(this.editingGroup.id);
+    console.log(this.editingGroup.id);
+    this.showEditGroupModal = false;
+
+    this.showAddMemberModal = true;
+    this.requestUpdate();
+  }
+
+  closeAddMemberModal() {
+    this.showAddMemberModal = false;
+    this.requestUpdate();
+  }
+
+  toggleSelectedFriend(event, userId) {
+    if (!this.selectedFriends) {
+      this.selectedFriends = new Set();
+    }
+
+    if (event.target.checked) {
+      this.selectedFriends.add(userId);
+    } else {
+      this.selectedFriends.delete(userId);
+    }
+  }
+  async addSelectedFriendsToGroup() {
+    if (!this.selectedFriends || this.selectedFriends.size === 0) {
+      alert("Vui lòng chọn ít nhất một người bạn để thêm vào nhóm!");
+      return;
+    }
 
     try {
-      const res = await fetch("/api/groups/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: this.editingGroup.id,
-          conversation: {
-            name: this.editingGroupName.trim(),
-            only_admin_can_message: this.onlyAdminCanMessage,
-            visibility: this.visibility
-          }
-        })
-      });
+      const conversationId = this.editingGroup.id;
+      const userIds = Array.from(this.selectedFriends); // Chuyển Set thành mảng
 
-      if (!res.ok) throw new Error("Không thể cập nhật nhóm!");
+      for (const userId of userIds) {
+        const res = await fetch(`/api/groups/add_member`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ conversation_id: conversationId, user_id: userId })
+        });
 
-      const data = await res.json();
-      if (data.status === "ok") {
-        // Cập nhật UI
-        this.groups = this.groups.map(group =>
-          group.id === this.editingGroup.id
-            ? {
-              ...group,
-              name: this.editingGroupName.trim(),
-              only_admin_can_message: this.onlyAdminCanMessage,
-              visibility: this.visibility
-            }
-            : group
-        );
-        this.closeEditGroupModal();
-      } else {
-        alert("Lỗi cập nhật nhóm!");
+        const data = await res.json();
+        if (data.status !== "ok") {
+          console.error(`Lỗi khi thêm thành viên ID ${userId}:`, data.errors);
+        }
       }
+
+      alert("Thêm thành viên thành công!");
+      this.closeAddMemberModal();
     } catch (error) {
-      console.error("❌ Lỗi khi chỉnh sửa nhóm:", error);
-      alert("Không thể cập nhật nhóm!");
+      console.error("Lỗi khi thêm thành viên:", error);
     }
   }
 
+  async openMemberListModal() {
+    try {
+      const res = await fetch(`/api/groups/${this.editingGroup.id}/members`);
+      const data = await res.json();
+
+      if (data.status === "ok") {
+        this.members = data.members;
+      } else {
+        console.error("Lỗi khi lấy danh sách thành viên:", data.errors);
+      }
+    } catch (error) {
+      console.error("Lỗi khi lấy danh sách thành viên:", error);
+    }
+
+    this.showEditGroupModal = false;
+    this.showMemberListModal = true;
+    this.requestUpdate();
+  }
+
+  closeMemberListModal() {
+    this.showMemberListModal = false;
+    this.requestUpdate();
+  }
+
   render() {
-    
-    // console.log("🔍 onlyAdminCanMessage:", this.selectedGroup?.only_admin_can_message);
-    // console.log("👤 user_id:", this.userId);
-    // console.log("👑 creator_id:", this.selectedGroup?.creator_id);
     return html`
       <div class="chat-container">
         <div class="group-list">
@@ -801,6 +849,13 @@ export class ChatRoom extends LitElement {
                 <option value="private">Riêng tư</option>
               </select>
       
+              <!-- Nút mở modal thêm thành viên -->
+              <button type="button" @click="${this.openAddMemberModal}">Thêm thành viên</button>
+
+              <!-- Nút mở modal danh sách thành viên -->
+              <button type="button" @click="${this.openMemberListModal}">Xem thành viên</button>
+
+
               <div>
                 <button type="submit">Lưu</button>
                 <button type="button" @click="${this.closeEditGroupModal}">Hủy</button>
@@ -809,8 +864,50 @@ export class ChatRoom extends LitElement {
           </div>
         </div>
       ` : ''}
-      
-      
+
+        <!-- Modal thêm thành viên -->
+        ${this.showAddMemberModal ? html`
+          <div class="modal-overlay">
+            <div class="modal">
+              <h3>Thêm thành viên vào nhóm</h3>
+              
+              <div class="friends-list">
+                ${this.friends?.length ? this.friends.map(friend => html`
+                  <label>
+                    <input type="checkbox"
+                          .value="${friend.id}"
+                          @change="${(e) => this.toggleSelectedFriend(e, friend.id)}" />
+                    ${friend.email}
+                  </label>
+                `) : html`<p>Không có bạn bè nào để thêm.</p>`}
+              </div>
+
+              <button type="button" @click="${this.addSelectedFriendsToGroup}">Thêm</button>
+              <button type="button" @click="${this.closeAddMemberModal}">Đóng</button>
+            </div>
+          </div>
+        ` : ''}
+              
+        <!-- Modal danh sách thành viên -->
+        ${this.showMemberListModal ? html`
+          <div class="modal-overlay">
+            <div class="modal">
+              <h3>Danh sách thành viên</h3>
+
+              <ul>
+                ${this.members?.length ? this.members.map(member => html`
+                  <li>
+                    ${member.email} 
+                    <button @click="${() => this.removeMember(member.id)}">Xóa</button>
+                  </li>
+                `) : html`<p>Nhóm chưa có thành viên.</p>`}
+              </ul>
+
+              <button type="button" @click="${this.closeMemberListModal}">Đóng</button>
+            </div>
+          </div>
+        ` : ''}
+
       `;
   }
 }

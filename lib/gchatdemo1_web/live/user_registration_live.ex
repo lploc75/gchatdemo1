@@ -8,16 +8,16 @@ defmodule Gchatdemo1Web.UserRegistrationLive do
     ~H"""
     <div class="mx-auto max-w-sm">
       <.header class="text-center">
-        Register for an account
+        Đăng ký tài khoản
         <:subtitle>
-          Already registered?
+          Đã có tài khoản?
           <.link navigate={~p"/users/log_in"} class="font-semibold text-brand hover:underline">
-            Log in
+            Đăng nhập
           </.link>
-          to your account now.
+          vào tài khoản của bạn.
         </:subtitle>
       </.header>
-
+      
       <.simple_form
         for={@form}
         id="registration_form"
@@ -30,12 +30,10 @@ defmodule Gchatdemo1Web.UserRegistrationLive do
         <.error :if={@check_errors}>
           Oops, something went wrong! Please check the errors below.
         </.error>
-
-        <.input field={@form[:email]} type="email" label="Email" required />
-        <.input field={@form[:password]} type="password" label="Password" required />
-
+         <.input field={@form[:email]} type="email" label="Email" required />
+        <.input field={@form[:password]} type="password" label="Mật khẩu" required />
         <:actions>
-          <.button phx-disable-with="Creating account..." class="w-full">Create an account</.button>
+          <.button phx-disable-with="Creating account..." class="w-full">Tạo tài khoản mới</.button>
         </:actions>
       </.simple_form>
     </div>
