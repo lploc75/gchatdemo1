@@ -737,6 +737,7 @@ export class ChatRoom extends LitElement {
 
       if (data.status === "ok") {
         this.members = data.members;
+        this.selectedGroup = this.editingGroup; // Lưu nhóm đang xem
       } else {
         console.error("Lỗi khi lấy danh sách thành viên:", data.errors);
       }
@@ -814,12 +815,11 @@ export class ChatRoom extends LitElement {
                   `)}
                 </div>
 
- <form @submit="${this.sendMessage}" class="message-input" 
+      <form @submit="${this.sendMessage}" class="message-input" 
             ?hidden="${this.selectedGroup?.conversation.only_admin_can_message && this.userId !== this.selectedGroup?.admin_user_id}">
         <input id="message-input" type="text" placeholder="Nhập tin nhắn..." />
         <button type="submit">Gửi</button>
       </form>
-
               `
         : html`<p>Chọn nhóm để bắt đầu chat</p>`}
       </div>
@@ -944,8 +944,10 @@ export class ChatRoom extends LitElement {
                 ${this.members?.length ? this.members.map(member => html`
                   <li>
                     ${member.email} 
-                    <button @click="${() => this.removeMember(member.id)}">Xóa</button>
-                  </li>
+                    ${this.userId === this.selectedGroup?.admin_user_id ? 
+                    html`<button @click="${() => this.removeMember(member.id)}">Xóa</button>` 
+                    : ''}                 
+                    </li>
                 `) : html`<p>Nhóm chưa có thành viên.</p>`}
               </ul>
 
