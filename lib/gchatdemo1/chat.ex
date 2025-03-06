@@ -180,6 +180,34 @@ defmodule Gchatdemo1.Chat do
     end)
   end
 
+  # Kiểm tra có phải là admin của nhóm hay không và
+  # Xóa nhóm và xóa tất cả thành viên trong nhóm
+  def delete_group(conversation_id, user_id) do
+    Repo.transaction(fn ->
+      # Kiểm tra nhóm tồn tại và lấy thông tin admin
+      case Repo.get(Conversation, conversation_id) do
+        %Conversation{is_group: true} = conversation ->
+          admin = Repo.get_by(GroupMember, [conversation_id: conversation.id, user_id: user_id, is_admin: true])
+
+          if admin do
+            # Xóa tất cả thành viên trong nhóm
+            Repo.delete_all(from gm in GroupMember, where: gm.conversation_id == ^conversation.id)
+
+            # # (Tùy chọn) Xóa tất cả tin nhắn trong nhóm
+            # Repo.delete_all(from m in Message, where: m.conversation_id == ^conversation.id)
+
+            # Xóa cuộc trò chuyện
+            Repo.delete(conversation)
+          else
+            Repo.rollback(:not_admin)
+          end
+
+        _ ->
+          Repo.rollback(:group_not_found)
+      end
+    end)
+  end
+
   # Cập nhật thông tin conversation (nhóm)
   def update_conversation(%Conversation{} = conversation, attrs) do
     conversation
@@ -206,6 +234,36 @@ defmodule Gchatdemo1.Chat do
       is_admin: is_admin
     })
     |> Repo.insert()
+  end
+
+  @doc "Xóa thành viên khỏi nhóm"
+  def remove_member(conversation_id, user_id, admin_id) do
+    Repo.transaction(fn ->
+      # Kiểm tra người xóa có phải là admin không
+      case Repo.get_by(GroupMember, [conversation_id: conversation_id, user_id: admin_id, is_admin: true]) do
+        nil ->
+          Repo.rollback(:not_admin)
+
+        _admin ->
+          # Không cho phép admin tự xóa mình nếu là admin duy nhất
+          is_last_admin =
+            from(gm in GroupMember,
+              where: gm.conversation_id == ^conversation_id and gm.is_admin == true
+            )
+            |> Repo.all()
+            |> length() == 1
+
+          if is_last_admin and user_id == admin_id do
+            Repo.rollback(:cannot_remove_last_admin)
+          end
+
+          # Xóa thành viên khỏi nhóm
+          case Repo.get_by(GroupMember, [conversation_id: conversation_id, user_id: user_id]) do
+            nil -> Repo.rollback(:user_not_found)
+            member -> Repo.delete(member)
+          end
+      end
+    end)
   end
 
   @doc "Gửi tin nhắn vào nhóm"

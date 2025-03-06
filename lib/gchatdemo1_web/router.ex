@@ -121,7 +121,10 @@ defmodule Gchatdemo1Web.Router do
 
     post "/groups/update", ChatController, :update_group
     post "/groups/create", ChatController, :create_group
+    post "/groups/delete", ChatController, :delete_group
     post "/groups/add_member", ChatController, :add_member
+    post "/groups/remove_member", ChatController, :remove_member
+
     # post "/messages", ChatController, :send_message
   end
 

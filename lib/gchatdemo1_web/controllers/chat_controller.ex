@@ -78,6 +78,31 @@ defmodule Gchatdemo1Web.ChatController do
     end
   end
 
+  def delete_group(conn, %{"conversation_id" => conversation_id}) do
+    user = conn.assigns[:current_user]
+
+    case Chat.delete_group(conversation_id, user.id) do
+      {:ok, _} ->
+        json(conn, %{message: "Nhóm đã được xóa thành công"})
+
+      {:error, :not_admin} ->
+        conn
+        |> put_status(:forbidden)
+        |> json(%{error: "Bạn không có quyền xóa nhóm này"})
+
+      {:error, :group_not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{error: "Nhóm không tồn tại"})
+
+      {:error, _} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{error: "Có lỗi xảy ra khi xóa nhóm"})
+    end
+  end
+
+
   def list_members(conn, %{"conversation_id" => conversation_id}) do
     members = Chat.get_group_members(conversation_id)
 
@@ -88,6 +113,34 @@ defmodule Gchatdemo1Web.ChatController do
     case Chat.add_member(conversation_id, user_id) do
       {:ok, member} -> json(conn, %{status: "ok", member: member})
       {:error, changeset} -> json(conn, %{status: "error", errors: changeset.errors})
+    end
+  end
+
+  def remove_member(conn, %{"conversation_id" => conversation_id, "user_id" => user_id}) do
+    admin = conn.assigns[:current_user]
+    case Chat.remove_member(conversation_id, user_id, admin.id) do
+      {:ok, _} ->
+        json(conn, %{message: "Thành viên đã bị xóa khỏi nhóm"})
+
+      {:error, :not_admin} ->
+        conn
+        |> put_status(:forbidden)
+        |> json(%{error: "Bạn không có quyền xóa thành viên"})
+
+      {:error, :cannot_remove_last_admin} ->
+        conn
+        |> put_status(:forbidden)
+        |> json(%{error: "Không thể xóa admin duy nhất khỏi nhóm"})
+
+      {:error, :user_not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{error: "Thành viên không tồn tại trong nhóm"})
+
+      {:error, _} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{error: "Có lỗi xảy ra khi xóa thành viên"})
     end
   end
 
