@@ -615,6 +615,8 @@ export class ChatRoom extends LitElement {
   openEditGroupModal(event, group) {
     event.stopPropagation(); // Ngăn chặn sự kiện click lan ra ngoài
     this.editingGroup = group;
+    this.closeMemberListModal();
+    this.closeAddMemberModal();
 
     this.editingGroupName = group.conversation.name;
     this.onlyAdminCanMessage = group.conversation.only_admin_can_message; // ✅ Cập nhật checkbox
@@ -667,23 +669,12 @@ export class ChatRoom extends LitElement {
     }
   }
   
-
-  closeEditGroupModal() {
-    this.showEditGroupModal = false;
-    this.requestUpdate();
-  }
-
   async openAddMemberModal() {
     await this.getNonGroupFriends(this.editingGroup.conversation.id);
     console.log(this.editingGroup.conversation.id);
     this.showEditGroupModal = false;
 
     this.showAddMemberModal = true;
-    this.requestUpdate();
-  }
-
-  closeAddMemberModal() {
-    this.showAddMemberModal = false;
     this.requestUpdate();
   }
 
@@ -750,8 +741,20 @@ export class ChatRoom extends LitElement {
     this.requestUpdate();
   }
 
+  closeEditGroupModal() {
+    this.showEditGroupModal = false;
+    this.requestUpdate();
+  }
+
+  closeAddMemberModal() {
+    this.showAddMemberModal = false;
+    this.showEditGroupModal = true;
+    this.requestUpdate();
+  }
+
   closeMemberListModal() {
     this.showMemberListModal = false;
+    this.showEditGroupModal = true;
     this.requestUpdate();
   }
 
@@ -764,7 +767,7 @@ export class ChatRoom extends LitElement {
           <ul>
             ${this.groups.map((group) => html`
               <li>
-      <span @click="${() => this.selectGroup(group)}">${group.conversation.name}</span>
+                <span @click="${() => this.selectGroup(group)}">${group.conversation.name}</span>
                 <button class="menu-button" @click="${(e) => this.openEditGroupModal(e, group)}">⋮</button>
               </li>
             `)}
@@ -816,7 +819,8 @@ export class ChatRoom extends LitElement {
                 </div>
 
       <form @submit="${this.sendMessage}" class="message-input" 
-            ?hidden="${this.selectedGroup?.conversation.only_admin_can_message && this.userId !== this.selectedGroup?.admin_user_id}">
+            ?hidden="${this.selectedGroup?.conversation.only_admin_can_message 
+            && this.userId !== this.selectedGroup?.admin_user_id}">
         <input id="message-input" type="text" placeholder="Nhập tin nhắn..." />
         <button type="submit">Gửi</button>
       </form>
@@ -872,28 +876,34 @@ export class ChatRoom extends LitElement {
             <form @submit="${this.saveGroupEdit}">
             <input type="hidden" .value="${this.editingGroup?.conversation.id}" />
               
+          
               <!-- Nhập tên nhóm -->
               <input type="text"
-                     .value="${this.editingGroupName}"
-                     @input="${(e) => this.editingGroupName = e.target.value}"
-                     placeholder="Tên nhóm" required />
-      
+               .value="${this.editingGroupName}"
+               @input="${(e) => this.editingGroupName = e.target.value}"
+               placeholder="Tên nhóm"
+               ?disabled="${this.userId !== this.editingGroup?.admin_user_id}"
+               required />
+
               <!-- Chỉ admin có thể nhắn tin -->
               <label>
                 <input type="checkbox"
-                       .checked="${this.onlyAdminCanMessage}"
-                       @change="${(e) => this.onlyAdminCanMessage = e.target.checked}" />
+                      .checked="${this.onlyAdminCanMessage}"
+                      @change="${(e) => this.onlyAdminCanMessage = e.target.checked}"
+                      ?disabled="${this.userId !== this.editingGroup?.admin_user_id}" />
                 Chỉ admin có thể nhắn tin
               </label>
-      
+
               <!-- Chọn chế độ nhóm -->
               <label for="visibility">Chế độ nhóm:</label>
               <select id="visibility"
                       .value="${this.visibility}"
-                      @change="${(e) => this.visibility = e.target.value}">
+                      @change="${(e) => this.visibility = e.target.value}"
+                      ?disabled="${this.userId !== this.editingGroup?.admin_user_id}">
                 <option value="public">Công khai</option>
                 <option value="private">Riêng tư</option>
               </select>
+
       
               ${!(this.visibility === "private" && this.userId !== this.editingGroup?.admin_user_id)  
               ? html`<button type="button" @click="${this.openAddMemberModal}">Thêm thành viên</button>` 
@@ -901,7 +911,6 @@ export class ChatRoom extends LitElement {
 
               <!-- Nút mở modal danh sách thành viên -->
               <button type="button" @click="${this.openMemberListModal}">Xem thành viên</button>
-
 
               <div>
                 <button type="submit">Lưu</button>
