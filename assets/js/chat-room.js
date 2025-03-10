@@ -625,7 +625,7 @@ export class ChatRoom extends LitElement {
     }
     this.requestUpdate();
   }
-  
+
   async saveGroupEdit() {
     if (!this.editingGroup || !this.editingGroupName.trim()) return;
 
@@ -716,7 +716,7 @@ export class ChatRoom extends LitElement {
   }
   async removeMember(userId) {
     if (!confirm("Bạn có chắc muốn xóa thành viên này khỏi nhóm?")) return;
-  
+
     try {
       const res = await fetch("/api/groups/remove_member", {
         method: "POST",
@@ -726,7 +726,7 @@ export class ChatRoom extends LitElement {
           user_id: userId,
         }),
       });
-  
+
       const data = await res.json();
       if (res.ok) {
         this.editingGroup.members = this.editingGroup.members.filter(m => m.id !== userId);
@@ -739,7 +739,7 @@ export class ChatRoom extends LitElement {
       console.error("❌ Lỗi khi xóa thành viên:", error);
     }
   }
-  
+
   // Mở modal tạo nhóm và load danh sách bạn bè
   async openCreateGroupModal() {
     await this.loadFriends();
@@ -840,39 +840,41 @@ export class ChatRoom extends LitElement {
                     <div class="email">${msg.email}</div> 
                   <div class="content">
                   ${this.editingMessageId === msg.id ? html`
-                      <input type="text" .value="${this.editingMessageContent}"
-                        @input="${(e) => this.editingMessageContent = e.target.value}" />
-                      <button @click="${() => this.saveEditedMessage(msg.id)}">Lưu</button>
-                      <button @click="${() => this.cancelEditing()}">Hủy</button>`
-        : msg.is_edited ? html`
-                        <span class="edited-text" @click="${() => this.toggleEditHistory(msg.id)}">
-                          ${msg.content} <span class="edited-label">(Đã chỉnh sửa)</span>
-                        </span>
-                        ${this.showEditHistoryId === msg.id ? html`
-                          <div class="edit-history">
-                            ${this.editHistory[msg.id]?.map(edit => html`
-                              <div class="edit-item">${edit.previous_content}</div>
-                            `) ?? ''}
-                          </div>
-                        ` : ''}
-                      `
-          : (msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>` : msg.content)
-      }
+                    <input type="text" .value="${this.editingMessageContent}"
+                      @input="${(e) => this.editingMessageContent = e.target.value}" />
+                    <button @click="${() => this.saveEditedMessage(msg.id)}">Lưu</button>
+                    <button @click="${() => this.cancelEditing()}">Hủy</button>`
+                  : (msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>`
+                    : msg.is_edited ? html`
+                      <span class="edited-text" @click="${() => this.toggleEditHistory(msg.id)}">
+                        ${msg.content} <span class="edited-label">(Đã chỉnh sửa)</span>
+                      </span>
+                      ${this.showEditHistoryId === msg.id ? html`
+                        <div class="edit-history">
+                          ${this.editHistory[msg.id]?.map(edit => html`
+                            <div class="edit-item">${edit.previous_content}</div>
+                          `) ?? ''}
+                        </div>
+                      ` : ''}
+                    ` : msg.content)
+                  }
+
                 </div>
                   ${msg.reaction ? html`
                   <div class="reaction">${msg.reaction}</div>
                 ` : ""}  
+
                 <!-- Nút thả emoji ẩn, hiện khi hover -->
                 ${!msg.is_recalled ? html`
                   <div class="emoji-picker">
-                  ${["😍", "😂", "👍", "❤️"].map(
-        (emoji) => html`
-                          <button @click="${() => this.reactToMessage(msg.id, emoji)}">${emoji}</button>
-                        `
-      )}
-                    </div>
-                  ` : ""}
-                  `)}
+                    ${["😍", "😂", "👍", "❤️"].map((emoji) => html`
+                      <button @click="${() => this.reactToMessage(msg.id, emoji)}">
+                      ${emoji}
+                      </button>
+                    `)}
+                  </div>
+                ` : ""}
+                `)}
                 </div>
 
       <form @submit="${this.sendMessage}" class="message-input" 

@@ -3,7 +3,7 @@ defmodule Gchatdemo1.Chat do
   alias Gchatdemo1.Repo
   alias Gchatdemo1.Chat.{Conversation, GroupMember, Message, Reaction, MessageEdit}
   alias Gchatdemo1.Accounts.{User, Friendship}
-  @doc "Lấy danh sách các nhóm chat và user_id của admin"
+  @doc "Lấy danh sách các nhóm chat mà user tham gia và user_id của admin"
   def list_groups_for_user(user_id) do
     from(c in Gchatdemo1.Chat.Conversation,
       join: gm in Gchatdemo1.Chat.GroupMember,
@@ -46,7 +46,7 @@ defmodule Gchatdemo1.Chat do
     |> Repo.all()
   end
 
-  @doc "Xóa tin nhắn"
+  @doc "Xóa tin nhắn (chỉ user gửi tin nhắn mới có quyền xóa)"
   def delete_message(message_id, user_id) do
     message = Repo.get(Message, message_id)
 
@@ -59,7 +59,7 @@ defmodule Gchatdemo1.Chat do
     end
   end
 
-  @doc "Tạo hoặc cập nhật reaction"
+  @doc "Tạo hoặc cập nhật reaction (emoji)"
   def create_or_update_reaction(user_id, message_id, emoji) do
     reaction_query =
       from(r in Reaction, where: r.user_id == ^user_id and r.message_id == ^message_id)
@@ -81,6 +81,7 @@ defmodule Gchatdemo1.Chat do
     end
   end
 
+  @doc "Xóa reaction"
   def remove_reaction(message_id, user_id) do
     IO.inspect({user_id, message_id}, label: "🔍 Checking remove_reaction")
 
@@ -95,6 +96,7 @@ defmodule Gchatdemo1.Chat do
     end
   end
 
+  @doc "Lấy danh sách bạn bè của user"
   def list_friends(current_user_id) do
     query =
       from f in Friendship,
@@ -145,6 +147,7 @@ defmodule Gchatdemo1.Chat do
     Repo.all(query)
   end
 
+  @doc "Tạo nhóm chat mới"
   def create_group(attrs \\ %{}) do
     Repo.transaction(fn ->
       # Đảm bảo không trùng
@@ -187,7 +190,12 @@ defmodule Gchatdemo1.Chat do
       # Kiểm tra nhóm tồn tại và lấy thông tin admin
       case Repo.get(Conversation, conversation_id) do
         %Conversation{is_group: true} = conversation ->
-          admin = Repo.get_by(GroupMember, [conversation_id: conversation.id, user_id: user_id, is_admin: true])
+          admin =
+            Repo.get_by(GroupMember,
+              conversation_id: conversation.id,
+              user_id: user_id,
+              is_admin: true
+            )
 
           if admin do
             # Xóa tất cả thành viên trong nhóm
@@ -240,7 +248,11 @@ defmodule Gchatdemo1.Chat do
   def remove_member(conversation_id, user_id, admin_id) do
     Repo.transaction(fn ->
       # Kiểm tra người xóa có phải là admin không
-      case Repo.get_by(GroupMember, [conversation_id: conversation_id, user_id: admin_id, is_admin: true]) do
+      case Repo.get_by(GroupMember,
+             conversation_id: conversation_id,
+             user_id: admin_id,
+             is_admin: true
+           ) do
         nil ->
           Repo.rollback(:not_admin)
 
@@ -258,7 +270,7 @@ defmodule Gchatdemo1.Chat do
           end
 
           # Xóa thành viên khỏi nhóm
-          case Repo.get_by(GroupMember, [conversation_id: conversation_id, user_id: user_id]) do
+          case Repo.get_by(GroupMember, conversation_id: conversation_id, user_id: user_id) do
             nil -> Repo.rollback(:user_not_found)
             member -> Repo.delete(member)
           end
