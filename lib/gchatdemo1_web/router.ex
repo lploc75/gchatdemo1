@@ -119,11 +119,18 @@ defmodule Gchatdemo1Web.Router do
     # Đổi list_messages thành get_messages
     get "/messages/:conversation_id", ChatController, :get_messages
 
+    # Cập nhật thông tin nhóm
     post "/groups/update", ChatController, :update_group
+    # Tạo nhóm mới
     post "/groups/create", ChatController, :create_group
+    # Xóa nhóm
     post "/groups/delete", ChatController, :delete_group
+    # Thêm thành viên vào nhóm
     post "/groups/add_member", ChatController, :add_member
+    # Xóa thành viên khỏi nhóm
     post "/groups/remove_member", ChatController, :remove_member
+    # Rời nhóm
+    post "/groups/leave", ChatController, :leave_group
 
     # post "/messages", ChatController, :send_message
   end

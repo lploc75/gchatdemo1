@@ -277,6 +277,56 @@ defmodule Gchatdemo1.Chat do
       end
     end)
   end
+  @doc "Rời nhóm, nếu là admin thì chuyển quyền admin cho người khác, nếu là người cuối cùng xóa nhóm"
+  def leave_group(user_id, conversation_id) do
+    group_member = Repo.get_by(GroupMember, user_id: user_id, conversation_id: conversation_id)
+
+    if group_member do
+      result =
+        Repo.transaction(fn ->
+          # Xóa user khỏi nhóm
+          Repo.delete!(group_member)
+
+          # Kiểm tra xem nhóm còn thành viên không
+          remaining_members =
+            GroupMember
+            |> where([gm], gm.conversation_id == ^conversation_id)
+            |> order_by([gm], asc: gm.inserted_at)
+            |> Repo.all()
+
+          case remaining_members do
+            [] ->
+              # Nếu không còn thành viên nào, xóa nhóm
+              delete_conversation(conversation_id)
+              {:ok, "Bạn đã rời nhóm và nhóm đã bị xóa"}
+
+            [new_admin | _] when group_member.is_admin ->
+              # Nếu user rời nhóm là admin, chuyển quyền admin cho người lâu nhất
+              new_admin
+              |> Ecto.Changeset.change(is_admin: true)
+              |> Repo.update!()
+
+              {:ok, "Bạn đã rời nhóm, admin mới đã được gán"}
+
+            _ ->
+              {:ok, "Bạn đã rời nhóm thành công"}
+          end
+        end)
+
+      case result do
+        # Đảm bảo chỉ trả về string
+        {:ok, {:ok, message}} -> {:ok, message}
+        {:error, _} -> {:error, "Có lỗi xảy ra khi rời nhóm"}
+      end
+    else
+      {:error, :not_in_group}
+    end
+  end
+
+  defp delete_conversation(conversation_id) do
+    Repo.get_by!(Conversation, id: conversation_id)
+    |> Repo.delete!()
+  end
 
   @doc "Gửi tin nhắn vào nhóm"
   def send_message(user_id, conversation_id, content, message_type \\ "text") do

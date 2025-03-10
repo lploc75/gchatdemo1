@@ -604,28 +604,57 @@ export class ChatRoom extends LitElement {
     }
   }
 
-  deleteGroup() {
-    if (confirm("Bạn có chắc chắn muốn xóa nhóm này không?")) {
-      fetch("/api/groups/delete", {
-        method: "POST", // Nếu API dùng DELETE, đổi lại "DELETE"
+  async deleteGroup() {
+    if (!confirm("Bạn có chắc chắn muốn xóa nhóm này không?")) return;
+  
+    try {
+      const response = await fetch("/api/groups/delete", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversation_id: this.editingGroup?.conversation.id }),
-      })
-        .then(response => response.json())
-        .then(data => {
-          if (data.message) {
-            alert("Nhóm đã bị xóa!");
-            this.groups = this.groups.filter(group => group.conversation.id !== this.editingGroup?.conversation.id);
-            this.closeEditGroupModal();
-          } else {
-            alert("Lỗi: " + data.error);
-          }
-        })
-        .catch(error => console.error("Lỗi khi xóa nhóm:", error));
+      });
+  
+      const result = await response.json();
+      if (response.ok) {
+        alert(result.message);
+        
+        // Cập nhật lại danh sách nhóm sau khi xóa
+        this.groups = this.groups.filter(group => group.conversation.id !== this.editingGroup?.conversation.id);
+        this.closeEditGroupModal();
+      } else {
+        alert(result.message || "Có lỗi xảy ra!");
+      }
+    } catch (error) {
+      console.error("Lỗi khi xóa nhóm:", error);
+      alert("Có lỗi xảy ra, vui lòng thử lại!");
     }
-    this.requestUpdate();
   }
-
+  
+  async leaveGroup() {
+    if (!confirm("Bạn có chắc muốn rời nhóm này không?")) return;
+  
+    try {
+      const response = await fetch("/api/groups/leave", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: this.editingGroup?.conversation.id }),
+      });
+  
+      const result = await response.json();
+      if (response.ok) {
+        // Cập nhật danh sách nhóm sau khi rời nhóm
+        this.groups = this.groups.filter(group => group.conversation.id !== this.editingGroup?.conversation.id);
+        alert(result.message);
+        this.closeEditGroupModal(); // Đóng modal sau khi rời nhóm
+      } else {
+        alert(result.message || "Có lỗi xảy ra!");
+      }
+    } catch (error) {
+      console.error("Lỗi khi rời nhóm:", error);
+      alert("Có lỗi xảy ra, vui lòng thử lại!");
+    }
+  }
+  
   async saveGroupEdit() {
     if (!this.editingGroup || !this.editingGroupName.trim()) return;
 
@@ -844,8 +873,8 @@ export class ChatRoom extends LitElement {
                       @input="${(e) => this.editingMessageContent = e.target.value}" />
                     <button @click="${() => this.saveEditedMessage(msg.id)}">Lưu</button>
                     <button @click="${() => this.cancelEditing()}">Hủy</button>`
-                  : (msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>`
-                    : msg.is_edited ? html`
+        : (msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>`
+          : msg.is_edited ? html`
                       <span class="edited-text" @click="${() => this.toggleEditHistory(msg.id)}">
                         ${msg.content} <span class="edited-label">(Đã chỉnh sửa)</span>
                       </span>
@@ -857,7 +886,7 @@ export class ChatRoom extends LitElement {
                         </div>
                       ` : ''}
                     ` : msg.content)
-                  }
+      }
 
                 </div>
                   ${msg.reaction ? html`
@@ -927,6 +956,7 @@ export class ChatRoom extends LitElement {
           </form>
         </div>
       ` : ''}
+      
       <!-- Modal chỉnh sửa nhóm -->
       ${this.showEditGroupModal ? html`
         <div class="modal-overlay">
@@ -971,13 +1001,16 @@ export class ChatRoom extends LitElement {
               <!-- Nút mở modal danh sách thành viên -->
               <button type="button" @click="${this.openMemberListModal}">Xem thành viên</button>
 
+              <!-- Nút rời nhóm -->
+              <button type="button" class="leave-button" @click="${this.leaveGroup}">Rời nhóm</button>
+
+              <!-- Nút xóa nhóm, chỉ hiện nếu là admin -->
+              ${this.userId === this.editingGroup?.admin_user_id ? html`
+                <button type="button" class="delete-button" @click="${this.deleteGroup}">Xóa nhóm</button>
+              ` : ''}
               <div>
                 <button type="submit">Lưu</button>
                 <button type="button" @click="${this.closeEditGroupModal}">Hủy</button>
-                <!-- Nút xóa nhóm, chỉ hiện nếu là admin -->
-                  ${this.userId === this.editingGroup?.admin_user_id ? html`
-                    <button type="button" class="delete-button" @click="${this.deleteGroup}">Xóa nhóm</button>
-                  ` : ''}
               </div>
             </form>
           </div>

@@ -19,10 +19,18 @@ defmodule Gchatdemo1Web.ChatController do
     json(conn, messages)
   end
 
+  # Lấy danh sách bạn bè
   def get_friends(conn, _params) do
     current_user = conn.assigns[:current_user]
     friends = Chat.list_friends(current_user.id)
     json(conn, friends)
+  end
+
+  # Lấy danh sách bạn bè chưa ở trong nhóm
+  def available_friends(conn, %{"conversation_id" => conversation_id}) do
+    user = conn.assigns[:current_user]
+    friends = Chat.list_friends_not_in_group(user.id, conversation_id)
+    json(conn, %{friends: friends})
   end
 
   def create_group(conn, %{"name" => name, "member_ids" => member_ids}) do
@@ -102,7 +110,6 @@ defmodule Gchatdemo1Web.ChatController do
     end
   end
 
-
   def list_members(conn, %{"conversation_id" => conversation_id}) do
     members = Chat.get_group_members(conversation_id)
 
@@ -118,6 +125,7 @@ defmodule Gchatdemo1Web.ChatController do
 
   def remove_member(conn, %{"conversation_id" => conversation_id, "user_id" => user_id}) do
     admin = conn.assigns[:current_user]
+
     case Chat.remove_member(conversation_id, user_id, admin.id) do
       {:ok, _} ->
         json(conn, %{message: "Thành viên đã bị xóa khỏi nhóm"})
@@ -144,10 +152,23 @@ defmodule Gchatdemo1Web.ChatController do
     end
   end
 
-  def available_friends(conn, %{"conversation_id" => conversation_id}) do
+  def leave_group(conn, %{"conversation_id" => conversation_id}) do
     user = conn.assigns[:current_user]
-    friends = Chat.list_friends_not_in_group(user.id, conversation_id)
-    json(conn, %{friends: friends})
+
+    case Chat.leave_group(user.id, conversation_id) do
+      {:ok, msg} ->
+        json(conn, %{status: "ok", message: msg})
+
+      {:error, :not_in_group} ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{status: "error", message: "Bạn không ở trong nhóm này!"})
+
+        # {:error, _} ->
+        #   conn
+        #   |> put_status(:internal_server_error)
+        #   |> json(%{status: "error", message: "Có lỗi xảy ra, vui lòng thử lại!"})
+    end
   end
 
   #  def send_message(conn, %{"user_id" => user_id, "conversation_id" => conversation_id, "content" => content}) do
