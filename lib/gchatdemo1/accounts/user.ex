@@ -50,7 +50,7 @@ defmodule Gchatdemo1.Accounts.User do
   defp validate_email(changeset, opts) do
     changeset
     |> validate_required([:email])
-    |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/, message: "must have the @ sign and no spaces")
+    |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/, message: "phải có ký tự @ và không có khoảng trống")
     |> validate_length(:email, max: 160)
     |> maybe_validate_unique_email(opts)
   end
@@ -58,7 +58,7 @@ defmodule Gchatdemo1.Accounts.User do
   defp validate_password(changeset, opts) do
     changeset
     |> validate_required([:password])
-    |> validate_length(:password, min: 12, max: 72)
+    |> validate_length(:password, min: 8, max: 50)
     # Examples of additional password validation:
     # |> validate_format(:password, ~r/[a-z]/, message: "at least one lower case character")
     # |> validate_format(:password, ~r/[A-Z]/, message: "at least one upper case character")
@@ -102,7 +102,7 @@ defmodule Gchatdemo1.Accounts.User do
     |> validate_email(opts)
     |> case do
       %{changes: %{email: _}} = changeset -> changeset
-      %{} = changeset -> add_error(changeset, :email, "did not change")
+      %{} = changeset -> add_error(changeset, :email, "Email không thay đổi")
     end
   end
 
@@ -121,7 +121,7 @@ defmodule Gchatdemo1.Accounts.User do
   def password_changeset(user, attrs, opts \\ []) do
     user
     |> cast(attrs, [:password])
-    |> validate_confirmation(:password, message: "does not match password")
+    |> validate_confirmation(:password, message: "Mật khẩu không trùng khớp")
     |> validate_password(opts)
   end
 
