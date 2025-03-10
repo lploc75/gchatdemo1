@@ -29,7 +29,18 @@ config :gchatdemo1, Gchatdemo1Web.Endpoint,
 #
 # For production it's recommended to configure a different adapter
 # at the `config/runtime.exs`.
-config :gchatdemo1, Gchatdemo1.Mailer, adapter: Swoosh.Adapters.Local
+config :gchatdemo1, Gchatdemo1.Mailer,
+  adapter: Swoosh.Adapters.SMTP,
+  relay: "smtp.gmail.com",
+  username: "lpl070524@gmail.com",
+  password: "xhpdhnfnlxcuwosa",
+  port: 587,
+  ssl: false,
+  tls: :always,
+  auth: :always,
+  retries: 2,
+  tls_options: [{:verify, :verify_none}]
+
 
 # Configure esbuild (the version is required)
 config :esbuild,
