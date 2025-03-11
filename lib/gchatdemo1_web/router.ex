@@ -15,9 +15,7 @@ defmodule Gchatdemo1Web.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
-    # ⚠️ Cần có dòng này!
     plug :fetch_session
-    # ⚠️ Cần có dòng này!
     plug :fetch_current_user
   end
 
@@ -104,6 +102,7 @@ defmodule Gchatdemo1Web.Router do
 
   scope "/api", Gchatdemo1Web do
     pipe_through :api
+    # pipe_through [:api, :require_authenticated_user]
 
     # Thêm route này để lấy token
     get "/user_token", UserSessionController, :get_token
@@ -116,7 +115,9 @@ defmodule Gchatdemo1Web.Router do
     get "/groups", ChatController, :get_groups
     # Lấy danh sách thành viên trong nhóm
     get "/groups/:conversation_id/members", ChatController, :list_members
-    # Đổi list_messages thành get_messages
+    # Tìm kiếm tin nhắn
+    get "/messages/search", ChatController, :search_messages
+    # Lấy danh sách tin nhắn trong cuộc trò chuyện
     get "/messages/:conversation_id", ChatController, :get_messages
 
     # Cập nhật thông tin nhóm

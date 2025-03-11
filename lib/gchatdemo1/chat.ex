@@ -223,6 +223,11 @@ defmodule Gchatdemo1.Chat do
     |> Repo.update()
   end
 
+  defp delete_conversation(conversation_id) do
+    Repo.get_by!(Conversation, id: conversation_id)
+    |> Repo.delete!()
+  end
+
   @doc "Lấy danh sách thành viên của nhóm"
   def get_group_members(conversation_id) do
     from(gm in GroupMember,
@@ -277,6 +282,7 @@ defmodule Gchatdemo1.Chat do
       end
     end)
   end
+
   @doc "Rời nhóm, nếu là admin thì chuyển quyền admin cho người khác, nếu là người cuối cùng xóa nhóm"
   def leave_group(user_id, conversation_id) do
     group_member = Repo.get_by(GroupMember, user_id: user_id, conversation_id: conversation_id)
@@ -323,11 +329,6 @@ defmodule Gchatdemo1.Chat do
     end
   end
 
-  defp delete_conversation(conversation_id) do
-    Repo.get_by!(Conversation, id: conversation_id)
-    |> Repo.delete!()
-  end
-
   @doc "Gửi tin nhắn vào nhóm"
   def send_message(user_id, conversation_id, content, message_type \\ "text") do
     IO.inspect(
@@ -348,6 +349,67 @@ defmodule Gchatdemo1.Chat do
       message_type: message_type
     })
     |> Repo.insert()
+  end
+
+  @doc """
+  Tìm kiếm tin nhắn
+  """
+ def search_messages(params) do
+  query =
+    from m in Message,
+      join: u in User, on: m.user_id == u.id,
+      where: m.is_deleted == false and m.is_recalled == false,
+      select: %{id: m.id, content: m.content, user_id: m.user_id, email: u.email}
+
+  query =
+    if params["conversation_id"] do
+      where(query, [m, _u], m.conversation_id == ^params["conversation_id"])
+    else
+      query
+    end
+
+    query =
+      if params["content"] do
+        where(
+          query,
+          [m, _u],
+          ilike(m.content, ^"%#{params["content"]}%")
+        )
+      else
+        query
+      end
+
+    # query =
+    #   if params["user_id"] do
+    #     where(query, [m], m.user_id == ^params["user_id"])
+    #   else
+    #     query
+    #   end
+
+    # query =
+    #   if params["from_date"] and params["to_date"] do
+    #     where(query, [m], m.inserted_at >= ^params["from_date"] and m.inserted_at <= ^params["to_date"])
+    #   else
+    #     query
+    #   end
+
+    # query =
+    #   if params["message_type"] do
+    #     where(query, [m], m.message_type == ^params["message_type"])
+    #   else
+    #     query
+    #   end
+
+    # query =
+    #   if params["has_file"] == "true" do
+    #     where(query, [m], not is_nil(m.file_url))
+    #   else
+    #     query
+    #   end
+
+    query
+    |> order_by([m], desc: m.inserted_at) # Hiển thị tin nhắn mới nhất trước
+    |> Repo.all()
   end
 
   @doc "Kiểm tra xem user có trong nhóm không"

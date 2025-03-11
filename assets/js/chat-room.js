@@ -58,17 +58,19 @@ export class ChatRoom extends LitElement {
     color: #333;
   }
 
-.email {
-  font-size: 0.85em;
-  margin-bottom: 5px;
-  font-weight: bold;
-}
-  .messages { 
-    flex: 1; 
-    height: 350px; 
-    overflow-y: auto; 
-    border: 1px solid #ddd; 
-    padding: 10px; 
+  .email {
+    font-size: 0.85em;
+    margin-bottom: 5px;
+    font-weight: bold;
+  }
+
+  .messages {
+    position: relative; /* Làm gốc để căn chỉnh icon tìm kiếm */
+    flex: 1;
+    height: 350px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    padding: 10px;
     background: #fafafa;
     display: flex;
     flex-direction: column;
@@ -83,7 +85,20 @@ export class ChatRoom extends LitElement {
     word-wrap: break-word;
     margin-bottom: 2px; /* Khoảng cách mặc định */
   }
-
+    
+  .search-icon {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 5px;
+    color: #333;
+    z-index: 10; /* Đảm bảo nằm trên tin nhắn */
+  }
+    
   .message.me { 
     align-self: flex-end; 
     background: #007bff; 
@@ -201,7 +216,19 @@ export class ChatRoom extends LitElement {
 .message.has-reaction {
   margin-bottom: 15px; /* Tăng khoảng cách giữa các tin nhắn có emoji */
 }
-  
+
+.search-input {
+  display: none;
+  border: 1px solid #ccc;
+  padding: 5px;
+  border-radius: 5px;
+  margin-left: 10px;
+}
+
+.search-input.visible {
+  display: block;
+}
+
 `;
 
   static properties = {
@@ -227,6 +254,8 @@ export class ChatRoom extends LitElement {
     this.contextMenuPosition = { top: 0, left: 0 };
     this.editHistory = {}; // Lưu lịch sử chỉnh sửa theo từng messageId
     this.showEditHistoryId = null; // Message đang hiển thị lịch sử chỉnh sửa
+    this.showSearchInput = false;
+
   }
 
   async getUserIdAndToken() {
@@ -271,6 +300,7 @@ export class ChatRoom extends LitElement {
     this.socket.connect();
   }
 
+  // Chọn nhóm chat và gán vào selectedGroup
   async selectGroup(group) {
     this.selectedGroup = group;
     console.log("🚀 Đã chọn nhóm:", group);
@@ -606,18 +636,18 @@ export class ChatRoom extends LitElement {
 
   async deleteGroup() {
     if (!confirm("Bạn có chắc chắn muốn xóa nhóm này không?")) return;
-  
+
     try {
       const response = await fetch("/api/groups/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversation_id: this.editingGroup?.conversation.id }),
       });
-  
+
       const result = await response.json();
       if (response.ok) {
         alert(result.message);
-        
+
         // Cập nhật lại danh sách nhóm sau khi xóa
         this.groups = this.groups.filter(group => group.conversation.id !== this.editingGroup?.conversation.id);
         this.closeEditGroupModal();
@@ -629,17 +659,17 @@ export class ChatRoom extends LitElement {
       alert("Có lỗi xảy ra, vui lòng thử lại!");
     }
   }
-  
+
   async leaveGroup() {
     if (!confirm("Bạn có chắc muốn rời nhóm này không?")) return;
-  
+
     try {
       const response = await fetch("/api/groups/leave", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversation_id: this.editingGroup?.conversation.id }),
       });
-  
+
       const result = await response.json();
       if (response.ok) {
         // Cập nhật danh sách nhóm sau khi rời nhóm
@@ -654,7 +684,7 @@ export class ChatRoom extends LitElement {
       alert("Có lỗi xảy ra, vui lòng thử lại!");
     }
   }
-  
+
   async saveGroupEdit() {
     if (!this.editingGroup || !this.editingGroupName.trim()) return;
 
@@ -743,6 +773,7 @@ export class ChatRoom extends LitElement {
       console.error("Lỗi khi thêm thành viên:", error);
     }
   }
+
   async removeMember(userId) {
     if (!confirm("Bạn có chắc muốn xóa thành viên này khỏi nhóm?")) return;
 
@@ -767,6 +798,47 @@ export class ChatRoom extends LitElement {
     } catch (error) {
       console.error("❌ Lỗi khi xóa thành viên:", error);
     }
+  }
+
+  // Tìm kiếm tin nhắn
+  async searchMessages(event) {
+    const content = event.target.value.trim();
+    this.searchQuery = event.target.value; // Lưu từ khoá tìm kiếm
+
+    console.log("Từ khoá tìm kiếm:", this.searchQuery); // Debug
+
+    if (content === '') {
+      this.searchResults = []; // Khi xóa nội dung tìm kiếm, hiển thị tin nhắn bình thường
+      this.requestUpdate(); // Buộc cập nhật UI ngay
+      return;
+    }
+
+    try {
+      // Lấy ID của cuộc trò chuyện
+      const conversationId = this.selectedGroup?.conversation?.id || '';
+
+      const response = await fetch(`/api/messages/search?content=${encodeURIComponent(content)}&conversation_id=${conversationId}`);
+      if (!response.ok) throw new Error('Lỗi khi gọi API');
+      const data = await response.json();
+      // Cập nhật danh sách tin nhắn tìm được và xác định sender
+      this.searchResults = data.messages.map(msg => ({
+        ...msg,
+        sender: msg.user_id === this.userId ? "me" : "other"
+      }));
+      console.log('Kết quả tìm kiếm:', this.searchResults);
+      this.requestUpdate(); // Cập nhật giao diện ngay lập tức
+
+    } catch (error) {
+      console.error('Lỗi tìm kiếm:', error);
+    }
+  }
+
+
+  toggleSearch() {
+    this.showSearchInput = !this.showSearchInput;
+    this.searchQuery = "";  // Xoá nội dung tìm kiếm
+    this.searchResults = []; // Xoá kết quả tìm kiếm
+    this.requestUpdate();
   }
 
   // Mở modal tạo nhóm và load danh sách bạn bè
@@ -863,55 +935,76 @@ export class ChatRoom extends LitElement {
           ${this.selectedGroup ? html`
                 <h3>Nhóm: ${this.selectedGroup.conversation.name}</h3>
                   <div class="messages">
-                  ${this.messages.map((msg) => html`
-                    <div class="message ${msg.sender} ${msg.reaction ? 'has-reaction' : ''}" data-id="${msg.id}
-                    " @contextmenu="${(e) => this.showContextMenu(e, msg.id)}">
-                    <div class="email">${msg.email}</div> 
-                  <div class="content">
-                  ${this.editingMessageId === msg.id ? html`
-                    <input type="text" .value="${this.editingMessageContent}"
-                      @input="${(e) => this.editingMessageContent = e.target.value}" />
-                    <button @click="${() => this.saveEditedMessage(msg.id)}">Lưu</button>
-                    <button @click="${() => this.cancelEditing()}">Hủy</button>`
-        : (msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>`
-          : msg.is_edited ? html`
-                      <span class="edited-text" @click="${() => this.toggleEditHistory(msg.id)}">
-                        ${msg.content} <span class="edited-label">(Đã chỉnh sửa)</span>
-                      </span>
-                      ${this.showEditHistoryId === msg.id ? html`
-                        <div class="edit-history">
-                          ${this.editHistory[msg.id]?.map(edit => html`
-                            <div class="edit-item">${edit.previous_content}</div>
-                          `) ?? ''}
+                    <div class="search-container">
+                      <button class="search-icon" @click="${this.toggleSearch}">&#x1F50E;&#xFE0E;</button>
+                       <input 
+                          type="text" 
+                          class="search-input ${this.showSearchInput ? 'visible' : ''}" 
+                          placeholder="Nhập nội dung tìm kiếm..." 
+                          @input="${this.searchMessages}"
+                          .value="${this.searchQuery}">
+                    </div>
+                    <!-- 🔥 Nếu có kết quả tìm kiếm, hiển thị danh sách tìm kiếm -->
+                    ${this.searchResults && this.searchResults.length > 0 ? html`
+                    <div class="search-results">
+                      ${this.searchResults.map((msg) => html`
+                        <div class="message ${msg.sender} search-result" @click="${() => this.jumpToMessage(msg.id)}">
+                          <div class="email">${msg.email}</div>
+                          <div class="content">${msg.content}</div>
                         </div>
-                      ` : ''}
-                    ` : msg.content)
+                      `)}
+                    </div>
+                    ` : html`
+                    <!-- 🔥 Hiển thị tin nhắn bình thường -->
+                    ${this.messages.map((msg) => html`
+                      <div class="message ${msg.sender} ${msg.reaction ? 'has-reaction' : ''}" data-id="${msg.id}"
+                        @contextmenu="${(e) => this.showContextMenu(e, msg.id)}">
+                        <div class="email">${msg.email}</div> 
+                        <div class="content">
+                          ${this.editingMessageId === msg.id ? html`
+                            <input type="text" .value="${this.editingMessageContent}"
+                              @input="${(e) => this.editingMessageContent = e.target.value}" />
+                            <button @click="${() => this.saveEditedMessage(msg.id)}">Lưu</button>
+                            <button @click="${() => this.cancelEditing()}">Hủy</button>
+                          ` : (msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>`
+        : msg.is_edited ? html`
+                                <span class="edited-text" @click="${() => this.toggleEditHistory(msg.id)}">
+                                  ${msg.content} <span class="edited-label">(Đã chỉnh sửa)</span>
+                                </span>
+                                ${this.showEditHistoryId === msg.id ? html`
+                                  <div class="edit-history">
+                                    ${this.editHistory[msg.id]?.map(edit => html`
+                                      <div class="edit-item">${edit.previous_content}</div>
+                                    `) ?? ''}
+                                  </div>
+                                ` : ''}
+                              ` : msg.content)
       }
+                        </div>
 
-                </div>
-                  ${msg.reaction ? html`
-                  <div class="reaction">${msg.reaction}</div>
-                ` : ""}  
+                        ${msg.reaction ? html`<div class="reaction">${msg.reaction}</div>` : ""}  
 
-                <!-- Nút thả emoji ẩn, hiện khi hover -->
-                ${!msg.is_recalled ? html`
-                  <div class="emoji-picker">
-                    ${["😍", "😂", "👍", "❤️"].map((emoji) => html`
-                      <button @click="${() => this.reactToMessage(msg.id, emoji)}">
-                      ${emoji}
-                      </button>
+                        <!-- Nút thả emoji ẩn, hiện khi hover -->
+                        ${!msg.is_recalled ? html`
+                          <div class="emoji-picker">
+                            ${["😍", "😂", "👍", "❤️"].map((emoji) => html`
+                              <button @click="${() => this.reactToMessage(msg.id, emoji)}">
+                                ${emoji}
+                              </button>
+                            `)}
+                          </div>
+                        ` : ""}
+                      </div>
                     `)}
-                  </div>
-                ` : ""}
-                `)}
+                    `}
                 </div>
 
-      <form @submit="${this.sendMessage}" class="message-input" 
-            ?hidden="${this.selectedGroup?.conversation.only_admin_can_message
-        && this.userId !== this.selectedGroup?.admin_user_id}">
-        <input id="message-input" type="text" placeholder="Nhập tin nhắn..." />
-        <button type="submit">Gửi</button>
-      </form>
+                <form @submit="${this.sendMessage}" class="message-input"
+                  ?hidden="${this.selectedGroup?.conversation.only_admin_can_message &&
+        this.userId !== this.selectedGroup?.admin_user_id}">
+                  <input id="message-input" type="text" placeholder="Nhập tin nhắn..." />
+                  <button type="submit">Gửi</button>
+                </form>
               `
         : html`<p>Chọn nhóm để bắt đầu chat</p>`}
       </div>

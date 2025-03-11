@@ -19,6 +19,11 @@ defmodule Gchatdemo1Web.ChatController do
     json(conn, messages)
   end
 
+  def search_messages(conn, params) do
+    messages = Chat.search_messages(params)
+    json(conn, %{messages: messages})
+  end
+
   # Lấy danh sách bạn bè
   def get_friends(conn, _params) do
     current_user = conn.assigns[:current_user]
