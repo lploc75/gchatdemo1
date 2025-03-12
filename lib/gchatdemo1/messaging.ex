@@ -3,7 +3,7 @@ defmodule Gchatdemo1.Messaging do
   alias Gchatdemo1.Repo
   alias Gchatdemo1.Chat.{Message}
   alias Gchatdemo1.Chat.{Reaction}
-
+  alias Gchatdemo1.Chat.{PinnedMessage}
   # Gửi tin nhắn
   def send_message(user_id, conversation_id, content, opts \\ %{}) do
     changeset =
@@ -18,7 +18,10 @@ defmodule Gchatdemo1.Messaging do
     case Repo.insert(changeset) do
       {:ok, message} ->
         # Preload user và friend sau khi insert
-        message_with_assoc = Repo.preload(message, [:user, :conversation, :reactions])
+        message_with_assoc =
+          message
+          |> Repo.preload([:user, :conversation, :reactions, :original_sender])
+
         {:ok, message_with_assoc}
 
       {:error, changeset} ->
@@ -86,11 +89,11 @@ defmodule Gchatdemo1.Messaging do
   def mark_messages_as_seen(conversation_id, sender_id) do
     from(m in Message,
       where:
-        m.conversation_id == ^conversation_id and m.user_id == ^sender_id and
-          m.status == "delivered",
-      update: [set: [status: "seen"]]
+        m.conversation_id == ^conversation_id and
+          m.user_id == ^sender_id and
+          m.status != "seen"
     )
-    |> Repo.update_all([])
+    |> Repo.update_all(set: [status: "seen"])
   end
 
   def delete_message(message_id) do
@@ -189,5 +192,98 @@ defmodule Gchatdemo1.Messaging do
         # Nếu đã tồn tại, trả về ID của conversation
         conversation_id
     end
+  end
+
+  def get_or_create_conversation_forward(user1_id, user2_id) do
+    # Tìm conversation_id nếu cả hai user cùng trong một nhóm
+    conversation_id =
+      from(gm1 in Gchatdemo1.Chat.GroupMember,
+        join: gm2 in Gchatdemo1.Chat.GroupMember,
+        on: gm1.conversation_id == gm2.conversation_id,
+        where: gm1.user_id == ^user1_id and gm2.user_id == ^user2_id,
+        select: gm1.conversation_id,
+        limit: 1
+      )
+      |> Repo.one()
+
+    case conversation_id do
+      nil ->
+        # Nếu chưa có, tạo mới conversation
+        changeset =
+          Gchatdemo1.Chat.Conversation.changeset(%Gchatdemo1.Chat.Conversation{}, %{
+            name: "Private Chat",
+            is_group: false,
+            creator_id: user1_id
+          })
+
+        case Repo.insert(changeset) do
+          {:ok, new_conversation} ->
+            # Thêm user1 vào bảng `group_members`
+            Repo.insert!(%Gchatdemo1.Chat.GroupMember{
+              conversation_id: new_conversation.id,
+              user_id: user1_id
+            })
+
+            # Thêm user2 vào bảng `group_members`
+            Repo.insert!(%Gchatdemo1.Chat.GroupMember{
+              conversation_id: new_conversation.id,
+              user_id: user2_id
+            })
+
+            # Trả về {:ok, conversation_id}
+            {:ok, new_conversation.id}
+
+          {:error, changeset} ->
+            # Trả về {:error, reason} nếu có lỗi
+            {:error, changeset}
+        end
+
+      conversation_id ->
+        # Nếu đã tồn tại, trả về {:ok, conversation_id}
+        {:ok, conversation_id}
+    end
+  end
+
+  @doc """
+  Ghim tin nhắn nếu chưa được ghim.
+  Trả về {:ok, pinned_message} nếu ghim thành công,
+  hoặc {:error, :already_pinned} nếu tin nhắn đã được ghim,
+  hoặc {:error, changeset} nếu có lỗi trong quá trình insert.
+  """
+  def pin_message(attrs) do
+    %PinnedMessage{}
+    |> PinnedMessage.changeset(attrs)
+    |> Repo.insert()
+    |> case do
+      {:ok, pinned} ->
+        {:ok, pinned}
+
+      {:error, changeset} ->
+        IO.inspect(changeset.errors, label: "Lỗi khi ghim tin nhắn")
+        {:error, changeset}
+    end
+  end
+
+  @doc """
+  Gỡ ghim tin nhắn theo conversation_id và message_id.
+  Trả về {:ok, pinned_message} nếu xóa thành công,
+  hoặc {:error, :not_found} nếu không tìm thấy.
+  """
+  def unpin_message(conversation_id, message_id) do
+    case Repo.get_by(PinnedMessage, conversation_id: conversation_id, message_id: message_id) do
+      nil -> {:error, :not_found}
+      pinned_message -> Repo.delete(pinned_message)
+    end
+  end
+
+  def list_pinned_messages(conversation_id) do
+    from(pm in PinnedMessage,
+      where: pm.conversation_id == ^conversation_id,
+      # Preload message và user liên quan
+      preload: [message: :user]
+    )
+    |> Repo.all()
+    # Trả về danh sách các message đã ghim
+    |> Enum.map(& &1.message)
   end
 end

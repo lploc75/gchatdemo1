@@ -833,7 +833,6 @@ export class ChatRoom extends LitElement {
     }
   }
 
-
   toggleSearch() {
     this.showSearchInput = !this.showSearchInput;
     this.searchQuery = "";  // Xoá nội dung tìm kiếm
@@ -967,7 +966,7 @@ export class ChatRoom extends LitElement {
                             <button @click="${() => this.saveEditedMessage(msg.id)}">Lưu</button>
                             <button @click="${() => this.cancelEditing()}">Hủy</button>
                           ` : (msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>`
-        : msg.is_edited ? html`
+                            : msg.is_edited ? html`
                                 <span class="edited-text" @click="${() => this.toggleEditHistory(msg.id)}">
                                   ${msg.content} <span class="edited-label">(Đã chỉnh sửa)</span>
                                 </span>

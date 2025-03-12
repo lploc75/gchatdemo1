@@ -19,10 +19,15 @@ defmodule Gchatdemo1Web.MessageLive do
       end
 
     if current_user do
-      # Lấy conversation_id từ params (có thể qua key "conversation_id" hoặc "to")
-      conversation_id = Map.get(params, "conversation_id") || Map.get(params, "to")
-      conversation_id = if conversation_id == "new", do: nil, else: conversation_id
+      # Lấy conversation_id từ params và chuyển đổi thành số nguyên
+      conversation_id =
+        case Map.get(params, "conversation_id") || Map.get(params, "to") do
+          "new" -> nil
+          id when is_binary(id) -> String.to_integer(id)
+          id -> id
+        end
 
+      socket = assign(socket, conversation_id: conversation_id)
       # Nếu có conversation_id, lấy conversation và preload thành viên (group_members)
       conversation =
         if conversation_id do
@@ -76,22 +81,25 @@ defmodule Gchatdemo1Web.MessageLive do
           []
         end
 
-      # Nếu tin nhắn cuối cùng là của current_user, chỉ đánh dấu là "delivered" nếu chưa "seen"
-      last_message = List.last(messages)
-
-      if last_message && last_message.user_id == current_user.id && last_message.status != "seen" do
-        Messaging.mark_message_as_delivered(last_message.id)
-      end
-
       if connected?(socket) and conversation_id do
+        topic = chat_topic(conversation_id)
+        # Thêm dòng này
+        IO.puts("Subscribing to topic: #{topic}")
         # Subscribe vào topic chat
-        Gchatdemo1Web.Endpoint.subscribe(chat_topic(current_user.id, conversation_id))
+        Gchatdemo1Web.Endpoint.subscribe(topic)
 
         # Sau đó gửi sự kiện đánh dấu tin nhắn là "đã xem" (để bên nhận gửi về bên gửi thông báo)
         send(self(), :mark_messages_as_seen)
       end
 
       Gchatdemo1Web.UserActivityTracker.update_last_active(current_user)
+
+      pinned_messages =
+        if conversation_id do
+          Messaging.list_pinned_messages(conversation_id)
+        else
+          []
+        end
 
       {:ok,
        assign(socket,
@@ -109,7 +117,10 @@ defmodule Gchatdemo1Web.MessageLive do
          forward_message: nil,
          show_search: false,
          filtered_messages: messages,
-         search_query: ""
+         search_query: "",
+         # Thêm expanded_messages vào đây
+         expanded_messages: %{},
+         pinned_messages: pinned_messages
        )}
     else
       {:ok, redirect(socket, to: "/users/log_in")}
@@ -121,21 +132,21 @@ defmodule Gchatdemo1Web.MessageLive do
     current_user = socket.assigns.current_user
     conversation_id = socket.assigns.conversation_id
 
-    case Messaging.send_message(current_user.id, conversation_id, content) do
-      {:ok, message} ->
-        topic = chat_topic(current_user.id, conversation_id)
-        Gchatdemo1Web.Endpoint.broadcast!(topic, "new_message", %{message: message})
+    max_length = 2000
 
-        # Đánh dấu tin nhắn là "đã gửi" và "đã nhận" nếu người nhận online
-        if connected?(socket) do
-          Messaging.mark_message_as_delivered(message.id)
-          Gchatdemo1Web.Endpoint.broadcast!(topic, "message_delivered", %{message_id: message.id})
-        end
+    if String.length(content) > max_length do
+      {:noreply, put_flash(socket, :error, "Tin nhắn quá dài (tối đa #{max_length} ký tự)")}
+    else
+      case Messaging.send_message(current_user.id, conversation_id, content) do
+        {:ok, message} ->
+          topic = chat_topic(conversation_id)
+          Gchatdemo1Web.Endpoint.broadcast!(topic, "new_message", %{message: message})
+          # <-- XÓA DÒNG APPEND Ở ĐÂY
+          {:noreply, socket}
 
-        {:noreply, assign(socket, messages: socket.assigns.messages ++ [message])}
-
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Không thể gửi tin nhắn")}
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Không thể gửi tin nhắn")}
+      end
     end
   end
 
@@ -152,7 +163,7 @@ defmodule Gchatdemo1Web.MessageLive do
           end)
 
         Gchatdemo1Web.Endpoint.broadcast!(
-          chat_topic(socket.assigns.current_user.id, socket.assigns.conversation_id),
+          chat_topic(socket.assigns.conversation_id),
           "message_recalled",
           recalled_message
         )
@@ -169,7 +180,6 @@ defmodule Gchatdemo1Web.MessageLive do
 
   # Xử lý sự kiện chỉnh sửa tin nhắn
   def handle_event("edit_message", %{"message_id" => message_id, "content" => content}, socket) do
-    current_user = socket.assigns.current_user
     conversation_id = socket.assigns.conversation_id
 
     case Messaging.edit_message(message_id, content) do
@@ -180,7 +190,7 @@ defmodule Gchatdemo1Web.MessageLive do
           end)
 
         Gchatdemo1Web.Endpoint.broadcast!(
-          chat_topic(current_user.id, conversation_id),
+          chat_topic(conversation_id),
           "message_edited",
           edited_message
         )
@@ -199,7 +209,7 @@ defmodule Gchatdemo1Web.MessageLive do
   def handle_event("delete_message", %{"message_id" => message_id}, socket) do
     case Messaging.delete_message(message_id) do
       {:ok, deleted_message} ->
-        topic = chat_topic(socket.assigns.current_user.id, socket.assigns.conversation_id)
+        topic = chat_topic(socket.assigns.conversation_id)
         # Broadcast thông báo xóa tin nhắn (nếu cần)
         Gchatdemo1Web.Endpoint.broadcast!(topic, "message_deleted", %{message_id: message_id})
 
@@ -222,34 +232,34 @@ defmodule Gchatdemo1Web.MessageLive do
         socket
       ) do
     current_user = socket.assigns.current_user
-
     original_message = Messaging.get_message(message_id)
-    # Chuyển đổi recipient_id từ chuỗi sang số nguyên
     recipient_id = String.to_integer(recipient_id)
 
-    content = "[Chuyển tiếp] #{original_message.content}"
+    case Messaging.get_or_create_conversation_forward(current_user.id, recipient_id) do
+      {:ok, conversation_id} ->
+        # Sử dụng conversation_id ở đây (đã là integer)
+        content = "[Chuyển tiếp] #{original_message.content}"
 
-    # Sử dụng original_sender_id nếu có, ngược lại dùng user_id của tin nhắn gốc
-    original_sender_id = current_user.id
-    IO.inspect(current_user.id, label: "Người chuyển tiếp")
-    IO.inspect(recipient_id, label: "Người được chuyển tiếp")
-    IO.inspect(original_sender_id, label: "Người được nhận id:")
+        case Messaging.send_message(current_user.id, conversation_id, content, %{
+               is_forwarded: true,
+               original_sender_id: original_message.user_id
+             }) do
+          {:ok, message} ->
+            # Đã đúng vì conversation_id là integer
+            topic = chat_topic(conversation_id)
+            Gchatdemo1Web.Endpoint.broadcast!(topic, "new_message", %{message: message})
 
-    case Messaging.send_message(current_user.id, recipient_id, content, %{
-           is_forwarded: true,
-           original_sender_id: original_sender_id
-         }) do
-      {:ok, message} ->
-        topic = chat_topic(current_user.id, recipient_id)
-        Gchatdemo1Web.Endpoint.broadcast!(topic, "new_message", %{message: message})
+            {:noreply,
+             socket
+             |> assign(show_forward_modal: false)
+             |> put_flash(:info, "Đã chuyển tiếp tin nhắn thành công")}
 
-        {:noreply,
-         socket
-         |> assign(show_forward_modal: false)
-         |> put_flash(:info, "Đã chuyển tiếp tin nhắn thành công")}
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Lỗi khi chuyển tiếp tin nhắn")}
+        end
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Lỗi khi chuyển tiếp tin nhắn")}
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Không thể tạo cuộc trò chuyện")}
     end
   end
 
@@ -276,7 +286,7 @@ defmodule Gchatdemo1Web.MessageLive do
 
     case Messaging.add_reaction(message_id, current_user.id, emoji) do
       {:ok, _reaction} ->
-        topic = chat_topic(current_user.id, conversation_id)
+        topic = chat_topic(conversation_id)
         # LẤY LẠI REACTIONS TỪ DATABASE SAU KHI THÊM/XÓA
         updated_reactions = Messaging.get_reactions(message_id)
 
@@ -349,6 +359,66 @@ defmodule Gchatdemo1Web.MessageLive do
     {:noreply, assign(socket, search_query: search_text)}
   end
 
+  def handle_event("close_forward_modal", _params, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("toggle_expand", %{"message_id" => message_id}, socket) do
+    # Thêm dòng này để convert sang integer
+    message_id = String.to_integer(message_id)
+    expanded = Map.get(socket.assigns.expanded_messages, message_id, false)
+    expanded_messages = Map.put(socket.assigns.expanded_messages, message_id, !expanded)
+    {:noreply, assign(socket, expanded_messages: expanded_messages)}
+  end
+
+  def handle_event("pin_message", %{"message_id" => message_id}, socket) do
+    message_id = String.to_integer(message_id)
+    # Tìm tin nhắn trong danh sách messages đã load
+    conversation_id = socket.assigns.conversation_id
+
+    attrs = %{
+      message_id: message_id,
+      conversation_id: conversation_id,
+      pinned_by: socket.assigns.current_user.id
+    }
+
+    case Gchatdemo1.Messaging.pin_message(attrs) do
+      {:ok, _pinned_message} ->
+        # Load lại từ database
+        pinned_messages = Messaging.list_pinned_messages(conversation_id)
+        topic = chat_topic(conversation_id)
+        Gchatdemo1Web.Endpoint.broadcast!(topic, "message_pinned", %{message_id: message_id})
+
+        {:noreply, assign(socket, pinned_messages: pinned_messages)}
+
+      {:error, :already_pinned} ->
+        {:noreply, put_flash(socket, :info, "Tin nhắn đã được ghim trước đó")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Lỗi khi ghim tin nhắn")}
+    end
+  end
+
+  def handle_event("unpin_message", %{"message_id" => message_id}, socket) do
+    conversation_id = socket.assigns.conversation_id
+
+    case Messaging.unpin_message(conversation_id, message_id) do
+      {:ok, _} ->
+        # Load lại từ database
+        pinned_messages = Messaging.list_pinned_messages(conversation_id)
+        topic = chat_topic(conversation_id)
+        Gchatdemo1Web.Endpoint.broadcast!(topic, "message_unpinned", %{message_id: message_id})
+
+        {:noreply, assign(socket, pinned_messages: pinned_messages)}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Tin nhắn chưa được ghim")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Lỗi khi gỡ ghim tin nhắn")}
+    end
+  end
+
   # Xử lý sự kiện tin nhắn đã được nhận
   def handle_info(%{event: "message_delivered", payload: %{message_id: message_id}}, socket) do
     current_user_id = socket.assigns.current_user.id
@@ -395,17 +465,19 @@ defmodule Gchatdemo1Web.MessageLive do
 
   # Xử lý sự kiện tin nhắn đã được xem
   def handle_info(
-        %{event: "messages_seen", payload: %{sender_id: sender_id, receiver_id: receiver_id}},
+        %{
+          event: "messages_seen",
+          payload: %{reader_id: reader_id, conversation_id: conversation_id}
+        },
         socket
       ) do
-    current_user_id = socket.assigns.current_user.id
-    conversation_id = socket.assigns.conversation_id
-    # sender_id == conversation_id và receiver_id == current_user_id
-    if to_string(sender_id) == to_string(conversation_id) and
-         to_string(receiver_id) == to_string(current_user_id) do
+    # Chỉ xử lý nếu conversation khớp và reader là người nhận
+    if conversation_id == socket.assigns.conversation_id && reader_id == socket.assigns.friend.id do
       updated_messages =
-        Enum.map(socket.assigns.messages, fn msg ->
-          if msg.user_id == current_user_id and msg.status in ["sent", "delivered"] do
+        socket.assigns.messages
+        |> Enum.map(fn msg ->
+          # Chỉ cập nhật trạng thái cho tin nhắn của current user
+          if msg.user_id == socket.assigns.current_user.id do
             %{msg | status: "seen"}
           else
             msg
@@ -423,29 +495,61 @@ defmodule Gchatdemo1Web.MessageLive do
     current_user_id = socket.assigns.current_user.id
     conversation_id = socket.assigns.conversation_id
 
-    # Đánh dấu tin nhắn từ friend (có sender = friend) gửi đến current_user thành "seen" trong DB nếu có,
-    # tuy nhiên, nếu bạn muốn hiển thị trạng thái "đã xem" cho tin nhắn của current_user (tin nhắn gửi đi),
-    # thì bạn cần update DB và broadcast cho các tin nhắn của current_user.
-    # Giả sử bạn muốn cập nhật tin nhắn của current_user khi friend đã xem:
-    {count, _} = Messaging.mark_messages_as_seen(current_user_id, conversation_id)
+    if socket.assigns.friend do
+      # Chỉ mark seen cho tin nhắn của friend (người gửi)
+      {count, _} =
+        Messaging.mark_messages_as_seen(
+          conversation_id,
+          # ID của người gửi tin nhắn
+          socket.assigns.friend.id
+        )
 
-    if count > 0 do
-      IO.inspect("Cập nhật trạng thái tin nhắn thành đã xem")
-      # Sửa payload: sender_id là current_user_id, receiver_id là conversation_id
-      Gchatdemo1Web.Endpoint.broadcast!(
-        chat_topic(current_user_id, conversation_id),
-        "messages_seen",
-        %{sender_id: conversation_id, receiver_id: current_user_id}
-      )
+      if count > 0 do
+        Gchatdemo1Web.Endpoint.broadcast!(
+          chat_topic(conversation_id),
+          "messages_seen",
+          %{
+            conversation_id: conversation_id,
+            # ID người đã xem
+            reader_id: current_user_id
+          }
+        )
+      end
     end
 
     {:noreply, socket}
   end
 
   def handle_info(%{event: "new_message", payload: %{message: new_message}}, socket) do
-    if new_message.user_id != socket.assigns.current_user.id do
-      send(self(), :mark_messages_as_seen)
-      {:noreply, update(socket, :messages, &(&1 ++ [new_message]))}
+    if new_message.conversation_id == socket.assigns.conversation_id do
+      # Thêm logic kiểm tra trùng lặp
+      updated_messages =
+        socket.assigns.messages
+        |> Enum.reject(&(&1.id == new_message.id))
+        |> Kernel.++([new_message])
+
+      # Nếu người dùng đang ở trong cuộc trò chuyện, đánh dấu tin nhắn là "đã xem"
+      current_user_id = socket.assigns.current_user.id
+      friend_id = socket.assigns.friend.id
+
+      if new_message.user_id == friend_id do
+        # Đánh dấu tin nhắn của người gửi (friend_id) là "seen"
+        {:ok, _} = Messaging.mark_messages_as_seen(new_message.conversation_id, current_user_id)
+
+        # Broadcast sự kiện "messages_seen" để cập nhật UI của người gửi
+        Gchatdemo1Web.Endpoint.broadcast!(
+          chat_topic(new_message.conversation_id),
+          "messages_seen",
+          %{
+            # Người xem (User B)
+            sender_id: current_user_id,
+            # Người gửi tin nhắn (User A)
+            receiver_id: friend_id
+          }
+        )
+      end
+
+      {:noreply, assign(socket, messages: updated_messages)}
     else
       {:noreply, socket}
     end
@@ -479,6 +583,16 @@ defmodule Gchatdemo1Web.MessageLive do
       end)
 
     {:noreply, assign(socket, messages: updated_messages)}
+  end
+
+  def handle_info(%{event: "message_pinned", payload: %{message_id: message_id}}, socket) do
+    pinned_messages = Messaging.list_pinned_messages(socket.assigns.conversation_id)
+    {:noreply, assign(socket, pinned_messages: pinned_messages)}
+  end
+
+  def handle_info(%{event: "message_unpinned", payload: %{message_id: message_id}}, socket) do
+    pinned_messages = Messaging.list_pinned_messages(socket.assigns.conversation_id)
+    {:noreply, assign(socket, pinned_messages: pinned_messages)}
   end
 
   # Hàm render hiển thị giao diện chat
@@ -517,7 +631,28 @@ defmodule Gchatdemo1Web.MessageLive do
           </div>
         <% end %>
       </div>
-      
+      <!-- Phần hiển thị tin nhắn đã ghim -->
+      <div class="pinned-messages-section">
+        <h3>📌 Tin nhắn đã ghim</h3>
+
+        <%= if Enum.empty?(@pinned_messages) do %>
+          <p class="no-pinned-messages">Chưa có tin nhắn nào được ghim</p>
+        <% else %>
+          <%= for pinned <- @pinned_messages do %>
+            <div class="pinned-message" id={"pinned-message-#{pinned.id}"}>
+              <div class="pinned-content">
+                <strong>{pinned.user.email}:</strong>
+                <p>{pinned.content}</p>
+              </div>
+
+              <button phx-click="unpin_message" phx-value-message_id={pinned.id} class="unpin-button">
+                Gỡ ghim
+              </button>
+            </div>
+          <% end %>
+        <% end %>
+      </div>
+
       <div id="chat-messages">
         <%= for message <- (if @search_query != "" do
       Enum.filter(@messages, fn msg ->
@@ -528,77 +663,107 @@ defmodule Gchatdemo1Web.MessageLive do
     end) do %>
           <% message_class =
             if message.user_id == @current_user.id, do: "message-right", else: "message-left" %>
-          <div class="message-container">
+          <div class="message-container" id={"message-#{message.id}"}>
             <!-- Menu "..." bên trái tin nhắn (chỉ cho tin nhắn của người gửi) -->
             <%= if message.user_id == @current_user.id do %>
               <div class="message-actions">
                 <div class="dropdown">
                   <button class="dropdown-toggle" type="button">...</button>
                   <div class="dropdown-menu">
-                    <%= if message.is_forwarded do %>
-                      <!-- Nếu tin nhắn đã chuyển tiếp, chỉ cho phép xóa và chuyển tiếp -->
+                    <%= if message.is_recalled do %>
                       <button
                         type="button"
                         phx-click="delete_message"
                         phx-value-message_id={message.id}
                       >
                         Xóa tin nhắn
-                      </button>
-                      
-                      <button
-                        type="button"
-                        phx-click="open_forward_modal"
-                        phx-value-message_id={message.id}
-                      >
-                        Chuyển tiếp
                       </button>
                     <% else %>
-                      <!-- Nếu tin nhắn chưa chuyển tiếp, cho phép thu hồi, chỉnh sửa, xóa và chuyển tiếp -->
-                      <button
-                        type="button"
-                        phx-click="recall_message"
-                        phx-value-message_id={message.id}
-                      >
-                        Thu hồi
-                      </button>
-                      
-                      <button type="button" phx-click={show_modal("edit-message-modal-#{message.id}")}>
-                        Chỉnh sửa
-                      </button>
-                      
-                      <button
-                        type="button"
-                        phx-click="delete_message"
-                        phx-value-message_id={message.id}
-                      >
-                        Xóa tin nhắn
-                      </button>
-                      
-                      <button
-                        type="button"
-                        phx-click="open_forward_modal"
-                        phx-value-message_id={message.id}
-                      >
-                        Chuyển tiếp
-                      </button>
+                      <%= if message.is_forwarded do %>
+                        <!-- Nếu tin nhắn đã chuyển tiếp, chỉ cho phép xóa và chuyển tiếp -->
+                        <button
+                          type="button"
+                          phx-click="delete_message"
+                          phx-value-message_id={message.id}
+                        >
+                          Xóa tin nhắn
+                        </button>
+
+                        <button
+                          type="button"
+                          phx-click="open_forward_modal"
+                          phx-value-message_id={message.id}
+                        >
+                          Chuyển tiếp
+                        </button>
+                      <% else %>
+                        <!-- Nếu tin nhắn chưa chuyển tiếp, cho phép thu hồi, chỉnh sửa, xóa và chuyển tiếp -->
+                        <button
+                          type="button"
+                          phx-click="recall_message"
+                          phx-value-message_id={message.id}
+                        >
+                          Thu hồi
+                        </button>
+
+                        <button
+                          type="button"
+                          phx-click={show_modal("edit-message-modal-#{message.id}")}
+                        >
+                          Chỉnh sửa
+                        </button>
+
+                        <button
+                          type="button"
+                          phx-click="delete_message"
+                          phx-value-message_id={message.id}
+                        >
+                          Xóa tin nhắn
+                        </button>
+
+                        <button
+                          type="button"
+                          phx-click="open_forward_modal"
+                          phx-value-message_id={message.id}
+                        >
+                          Chuyển tiếp
+                        </button>
+                      <% end %>
                     <% end %>
                   </div>
                 </div>
               </div>
             <% end %>
-            
+
+            <%= if message.user_id != @current_user.id do %>
+              <div class="message-actions">
+                <div class="dropdown">
+                  <button class="dropdown-toggle" type="button">...</button>
+                  <div class="dropdown-menu">
+                    <button
+                      type="button"
+                      phx-click="open_forward_modal"
+                      phx-value-message_id={message.id}
+                    >
+                      Chuyển tiếp
+                    </button>
+                  </div>
+                </div>
+              </div>
+            <% end %>
+
     <!-- Nội dung tin nhắn -->
             <div class={"message #{message_class}"} title={format_time(message.inserted_at)}>
               <!-- Hiển thị thông tin chuyển tiếp -->
               <%= if message.is_forwarded do %>
                 <div class="forwarded-message-header">
-                  Chuyển tiếp từ {Accounts.get_user(message.original_sender_id).email}
+                  {Accounts.get_user(message.user_id).email} đã chuyển tiếp một tin nhắn
                 </div>
               <% end %>
-              
+
               <div class="message-content">
                 <strong>{message.user.email}:</strong>
-                <p>
+                <p class={"truncate-message #{if @expanded_messages[message.id], do: "expanded"}"}>
                   <%= if message.is_recalled do %>
                     <em>Tin nhắn đã được thu hồi</em>
                   <% else %>
@@ -608,8 +773,29 @@ defmodule Gchatdemo1Web.MessageLive do
                     <% end %>
                   <% end %>
                 </p>
+
+                <%= if String.length(message.content) > 150 do %>
+                  <button
+                    phx-click="toggle_expand"
+                    phx-value-message_id={message.id}
+                    class="expand-button"
+                  >
+                    {if @expanded_messages[message.id], do: "Thu gọn", else: "Xem thêm"}
+                  </button>
+                <% end %>
               </div>
-              <!-- Hiển thị reactions -->
+              <!-- Nút Ghim/Gỡ ghim của từng tin nhắn -->
+              <%= if not Enum.any?(@pinned_messages, fn m -> m.id == message.id end) do %>
+                <button phx-click="pin_message" phx-value-message_id={message.id}>
+                  Ghim
+                </button>
+              <% else %>
+                <button phx-click="unpin_message" phx-value-message_id={message.id}>
+                  Gỡ ghim
+                </button>
+              <% end %>
+
+    <!-- Hiển thị reactions -->
               <div class="message-reactions">
                 <%= for reaction <- message.reactions do %>
                   <span class="emoji-reaction">
@@ -628,7 +814,7 @@ defmodule Gchatdemo1Web.MessageLive do
                   </span>
                 <% end %>
               </div>
-              
+
     <!-- Emoji picker -->
               <div class="emoji-actions">
                 <button
@@ -638,7 +824,7 @@ defmodule Gchatdemo1Web.MessageLive do
                 >
                   😀
                 </button>
-                
+
                 <%= if @show_emoji_picker == message.id do %>
                   <div class="emoji-picker">
                     <button
@@ -648,7 +834,7 @@ defmodule Gchatdemo1Web.MessageLive do
                     >
                       👍
                     </button>
-                    
+
                     <button
                       phx-click="react_to_message"
                       phx-value-message_id={message.id}
@@ -656,7 +842,7 @@ defmodule Gchatdemo1Web.MessageLive do
                     >
                       ❤️
                     </button>
-                    
+
                     <button
                       phx-click="react_to_message"
                       phx-value-message_id={message.id}
@@ -664,7 +850,7 @@ defmodule Gchatdemo1Web.MessageLive do
                     >
                       😄
                     </button>
-                    
+
                     <button
                       phx-click="react_to_message"
                       phx-value-message_id={message.id}
@@ -672,7 +858,7 @@ defmodule Gchatdemo1Web.MessageLive do
                     >
                       😠
                     </button>
-                    
+
                     <button
                       phx-click="react_to_message"
                       phx-value-message_id={message.id}
@@ -683,7 +869,7 @@ defmodule Gchatdemo1Web.MessageLive do
                   </div>
                 <% end %>
               </div>
-              
+
     <!-- Hiển thị trạng thái tin nhắn (chỉ cho tin nhắn cuối cùng) -->
               <%= if message.user_id == @current_user.id and is_last_message?(message, @messages) do %>
                 <div class="message-status">
@@ -698,11 +884,11 @@ defmodule Gchatdemo1Web.MessageLive do
                 </div>
               <% end %>
             </div>
-            
+
     <!-- Modal chỉnh sửa tin nhắn -->
             <.modal id={"edit-message-modal-#{message.id}"}>
               <h2>Chỉnh sửa tin nhắn</h2>
-              
+
               <form phx-submit="edit_message">
                 <input type="hidden" name="message_id" value={message.id} /> <textarea name="content"><%= message.content %></textarea>
                 <button type="submit">Lưu</button>
@@ -711,13 +897,13 @@ defmodule Gchatdemo1Web.MessageLive do
           </div>
         <% end %>
       </div>
-      
+
     <!-- Modal chuyển tiếp tin nhắn -->
 
       <%= if @show_forward_modal do %>
         <.modal id="forward-modal" show={true}>
           <h2 class="text-xl font-bold mb-4">Chuyển tiếp tin nhắn</h2>
-          
+
           <form phx-submit="forward_message" class="space-y-4">
             <input
               type="hidden"
@@ -733,7 +919,7 @@ defmodule Gchatdemo1Web.MessageLive do
                 </label>
               <% end %>
             </div>
-            
+
             <div class="modal-actions flex justify-end space-x-2">
               <button
                 type="button"
@@ -742,7 +928,7 @@ defmodule Gchatdemo1Web.MessageLive do
               >
                 Hủy
               </button>
-              
+
               <button type="submit" class="btn-submit px-4 py-2 bg-blue-500 text-white rounded">
                 Gửi
               </button>
@@ -750,7 +936,7 @@ defmodule Gchatdemo1Web.MessageLive do
           </form>
         </.modal>
       <% end %>
-      
+
     <!-- Ô nhập tin nhắn -->
       <form phx-submit="send_message">
         <div class="chat-input">
@@ -758,7 +944,7 @@ defmodule Gchatdemo1Web.MessageLive do
           <label for="file-upload">
             📎 <input type="file" id="file-upload" hidden phx-change="upload_file" />
           </label>
-          
+
           <label for="image-upload">
             🖼️
             <input type="file" id="image-upload" accept="image/*" hidden phx-change="upload_image" />
@@ -795,8 +981,7 @@ defmodule Gchatdemo1Web.MessageLive do
   end
 
   # Hàm tạo topic cho phòng chat
-  defp chat_topic(user_id, friend_id) do
-    [id1, id2] = Enum.sort([user_id, friend_id])
-    "chat:#{id1}-#{id2}"
+  defp chat_topic(conversation_id) do
+    "conversation:#{conversation_id}"
   end
 end
