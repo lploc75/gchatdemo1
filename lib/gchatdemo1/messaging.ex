@@ -278,12 +278,11 @@ defmodule Gchatdemo1.Messaging do
 
   def list_pinned_messages(conversation_id) do
     from(pm in PinnedMessage,
-      where: pm.conversation_id == ^conversation_id,
-      # Preload message và user liên quan
+      join: m in assoc(pm, :message),
+      where: pm.conversation_id == ^conversation_id and m.is_recalled == false,
       preload: [message: :user]
     )
     |> Repo.all()
-    # Trả về danh sách các message đã ghim
     |> Enum.map(& &1.message)
   end
 end

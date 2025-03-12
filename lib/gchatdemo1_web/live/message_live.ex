@@ -149,8 +149,6 @@ defmodule Gchatdemo1Web.MessageLive do
       end
     end
   end
-
-  # Xử lý sự kiện thu hồi tin nhắn
   def handle_event("recall_message", %{"message_id" => message_id}, socket) do
     case Messaging.recall_message(message_id) do
       {:ok, recalled_message} ->
@@ -162,15 +160,26 @@ defmodule Gchatdemo1Web.MessageLive do
             if msg.id == recalled_message.id, do: recalled_message, else: msg
           end)
 
-        Gchatdemo1Web.Endpoint.broadcast!(
-          chat_topic(socket.assigns.conversation_id),
-          "message_recalled",
-          recalled_message
-        )
+        # Debug: In ra tin nhắn vừa thu hồi
+        IO.inspect(recalled_message, label: "Recalled message")
+
+        # Debug: In ra danh sách pinned_messages trước khi cập nhật
+        IO.inspect(socket.assigns.pinned_messages, label: "Pinned messages BEFORE recall")
+
+        # Cập nhật danh sách tin nhắn ghim: loại bỏ tin nhắn thu hồi
+        new_pinned_messages =
+          Enum.reject(socket.assigns.pinned_messages, &(&1.id == message_id))
+
+        # Debug: In ra danh sách pinned_messages sau khi cập nhật
+        IO.inspect(new_pinned_messages, label: "Pinned messages AFTER recall")
+
+        topic = chat_topic(socket.assigns.conversation_id)
+        Gchatdemo1Web.Endpoint.broadcast!(topic, "message_recalled", recalled_message)
+        Gchatdemo1Web.Endpoint.broadcast!(topic, "message_unpinned", %{message_id: message_id})
 
         {:noreply,
          socket
-         |> assign(messages: updated_messages)
+         |> assign(messages: updated_messages, pinned_messages: new_pinned_messages)
          |> put_flash(:info, "Tin nhắn đã được thu hồi thành công")}
 
       {:error, _} ->
@@ -178,47 +187,63 @@ defmodule Gchatdemo1Web.MessageLive do
     end
   end
 
-  # Xử lý sự kiện chỉnh sửa tin nhắn
-  def handle_event("edit_message", %{"message_id" => message_id, "content" => content}, socket) do
-    conversation_id = socket.assigns.conversation_id
+# Xử lý sự kiện chỉnh sửa tin nhắn
+def handle_event("edit_message", %{"message_id" => message_id, "content" => content}, socket) do
+  conversation_id = socket.assigns.conversation_id
 
-    case Messaging.edit_message(message_id, content) do
-      {:ok, edited_message} ->
-        updated_messages =
-          Enum.map(socket.assigns.messages, fn msg ->
-            if msg.id == edited_message.id, do: edited_message, else: msg
-          end)
+  case Messaging.edit_message(message_id, content) do
+    {:ok, edited_message} ->
+      # Cập nhật danh sách tin nhắn đã chỉnh sửa
+      updated_messages =
+        Enum.map(socket.assigns.messages, fn msg ->
+          if msg.id == edited_message.id, do: edited_message, else: msg
+        end)
 
-        Gchatdemo1Web.Endpoint.broadcast!(
-          chat_topic(conversation_id),
-          "message_edited",
-          edited_message
-        )
+      # Kiểm tra nếu tin nhắn đã ghim bị chỉnh sửa thì cập nhật danh sách ghim
+      updated_pinned_messages =
+        if Enum.any?(socket.assigns.pinned_messages, &(&1.id == edited_message.id)) do
+          Messaging.list_pinned_messages(socket.assigns.conversation_id)
+        else
+          socket.assigns.pinned_messages
+        end
 
-        {:noreply,
-         socket
-         |> assign(messages: updated_messages)
-         |> put_flash(:info, "Tin nhắn đã được chỉnh sửa thành công")}
+      # Phát sự kiện cập nhật tin nhắn
+      Gchatdemo1Web.Endpoint.broadcast!(
+        chat_topic(conversation_id),
+        "message_edited",
+        edited_message
+      )
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Không thể chỉnh sửa tin nhắn")}
-    end
+      {:noreply,
+       socket
+       |> assign(messages: updated_messages, pinned_messages: updated_pinned_messages)
+       |> put_flash(:info, "Tin nhắn đã được chỉnh sửa thành công")}
+
+    {:error, _changeset} ->
+      {:noreply, put_flash(socket, :error, "Không thể chỉnh sửa tin nhắn")}
   end
+end
 
   # Thêm xử lý sự kiện xóa tin nhắn
   def handle_event("delete_message", %{"message_id" => message_id}, socket) do
     case Messaging.delete_message(message_id) do
       {:ok, deleted_message} ->
         topic = chat_topic(socket.assigns.conversation_id)
-        # Broadcast thông báo xóa tin nhắn (nếu cần)
+        # Broadcast thông báo xóa tin nhắn
         Gchatdemo1Web.Endpoint.broadcast!(topic, "message_deleted", %{message_id: message_id})
 
         updated_messages =
           Enum.reject(socket.assigns.messages, fn msg -> msg.id == deleted_message.id end)
 
+        # Cập nhật danh sách tin nhắn ghim: loại bỏ tin nhắn vừa xóa
+        new_pinned_messages =
+          Enum.reject(socket.assigns.pinned_messages, &(&1.id == message_id))
+
+        Gchatdemo1Web.Endpoint.broadcast!(topic, "message_unpinned", %{message_id: message_id})
+
         {:noreply,
          socket
-         |> assign(messages: updated_messages)
+         |> assign(messages: updated_messages, pinned_messages: new_pinned_messages)
          |> put_flash(:info, "Tin nhắn đã được xóa thành công")}
 
       {:error, _reason} ->
@@ -463,97 +488,93 @@ defmodule Gchatdemo1Web.MessageLive do
      )}
   end
 
-  # Xử lý sự kiện tin nhắn đã được xem
-  def handle_info(
-        %{
-          event: "messages_seen",
-          payload: %{reader_id: reader_id, conversation_id: conversation_id}
-        },
-        socket
-      ) do
-    # Chỉ xử lý nếu conversation khớp và reader là người nhận
-    if conversation_id == socket.assigns.conversation_id && reader_id == socket.assigns.friend.id do
-      updated_messages =
-        socket.assigns.messages
-        |> Enum.map(fn msg ->
-          # Chỉ cập nhật trạng thái cho tin nhắn của current user
-          if msg.user_id == socket.assigns.current_user.id do
-            %{msg | status: "seen"}
-          else
-            msg
-          end
-        end)
-
-      {:noreply, assign(socket, messages: updated_messages)}
+# Xử lý sự kiện tin nhắn đã được xem
+def handle_info(
+  %{
+    event: "messages_seen",
+    payload: %{reader_id: reader_id, conversation_id: conversation_id}
+  },
+  socket
+) do
+# Chỉ xử lý nếu conversation khớp và reader là người nhận (friend của current user)
+if conversation_id == socket.assigns.conversation_id && reader_id == socket.assigns.friend.id do
+updated_messages =
+  socket.assigns.messages
+  |> Enum.map(fn msg ->
+    # Cập nhật trạng thái "seen" cho tin nhắn của current user
+    if msg.user_id == socket.assigns.current_user.id do
+      %{msg | status: "seen"}
     else
-      {:noreply, socket}
+      msg
     end
+  end)
+
+{:noreply, assign(socket, messages: updated_messages)}
+else
+{:noreply, socket}
+end
+end
+
+# Xử lý sự kiện đánh dấu tin nhắn là "đã xem" khi người dùng mở chat
+def handle_info(:mark_messages_as_seen, socket) do
+current_user_id = socket.assigns.current_user.id
+conversation_id = socket.assigns.conversation_id
+
+if socket.assigns.friend do
+# Chỉ mark seen cho tin nhắn của friend (người gửi)
+{count, _} =
+  Messaging.mark_messages_as_seen(
+    conversation_id,
+    socket.assigns.friend.id
+  )
+
+if count > 0 do
+  Gchatdemo1Web.Endpoint.broadcast!(
+    chat_topic(conversation_id),
+    "messages_seen",
+    %{
+      conversation_id: conversation_id,
+      reader_id: current_user_id
+    }
+  )
+end
+end
+
+{:noreply, socket}
+end
+
+def handle_info(%{event: "new_message", payload: %{message: new_message}}, socket) do
+if new_message.conversation_id == socket.assigns.conversation_id do
+updated_messages =
+  socket.assigns.messages
+  |> Enum.reject(&(&1.id == new_message.id))
+  |> Kernel.++([new_message])
+
+current_user_id = socket.assigns.current_user.id
+friend_id = socket.assigns.friend.id
+
+if new_message.user_id == friend_id do
+  # Đánh dấu tin nhắn của friend là "seen"
+  case Messaging.mark_messages_as_seen(new_message.conversation_id, current_user_id) do
+    {count, _} -> {:ok, count}
   end
 
-  # Xử lý sự kiện đánh dấu tin nhắn là "đã xem" khi người dùng mở chat
-  def handle_info(:mark_messages_as_seen, socket) do
-    current_user_id = socket.assigns.current_user.id
-    conversation_id = socket.assigns.conversation_id
+  # Broadcast sự kiện "messages_seen" với payload thống nhất
+  Gchatdemo1Web.Endpoint.broadcast!(
+    chat_topic(new_message.conversation_id),
+    "messages_seen",
+    %{
+      conversation_id: new_message.conversation_id,
+      reader_id: current_user_id
+    }
+  )
+end
 
-    if socket.assigns.friend do
-      # Chỉ mark seen cho tin nhắn của friend (người gửi)
-      {count, _} =
-        Messaging.mark_messages_as_seen(
-          conversation_id,
-          # ID của người gửi tin nhắn
-          socket.assigns.friend.id
-        )
-
-      if count > 0 do
-        Gchatdemo1Web.Endpoint.broadcast!(
-          chat_topic(conversation_id),
-          "messages_seen",
-          %{
-            conversation_id: conversation_id,
-            # ID người đã xem
-            reader_id: current_user_id
-          }
-        )
-      end
-    end
-
-    {:noreply, socket}
-  end
-
-  def handle_info(%{event: "new_message", payload: %{message: new_message}}, socket) do
-    if new_message.conversation_id == socket.assigns.conversation_id do
-      # Thêm logic kiểm tra trùng lặp
-      updated_messages =
-        socket.assigns.messages
-        |> Enum.reject(&(&1.id == new_message.id))
-        |> Kernel.++([new_message])
-
-      # Nếu người dùng đang ở trong cuộc trò chuyện, đánh dấu tin nhắn là "đã xem"
-      current_user_id = socket.assigns.current_user.id
-      friend_id = socket.assigns.friend.id
-
-      if new_message.user_id == friend_id do
-        # Đánh dấu tin nhắn của người gửi (friend_id) là "seen"
-        {:ok, _} = Messaging.mark_messages_as_seen(new_message.conversation_id, current_user_id)
-
-        # Broadcast sự kiện "messages_seen" để cập nhật UI của người gửi
-        Gchatdemo1Web.Endpoint.broadcast!(
-          chat_topic(new_message.conversation_id),
-          "messages_seen",
-          %{
-            # Người xem (User B)
-            sender_id: current_user_id,
-            # Người gửi tin nhắn (User A)
-            receiver_id: friend_id
-          }
-        )
-      end
-
-      {:noreply, assign(socket, messages: updated_messages)}
-    else
-      {:noreply, socket}
-    end
-  end
+{:noreply, assign(socket, messages: updated_messages)}
+else
+{:noreply, socket}
+end
+end
 
   # Xử lý broadcast event "message_edited"
   def handle_info(%{event: "message_edited", payload: edited_message}, socket) do
@@ -585,12 +606,12 @@ defmodule Gchatdemo1Web.MessageLive do
     {:noreply, assign(socket, messages: updated_messages)}
   end
 
-  def handle_info(%{event: "message_pinned", payload: %{message_id: message_id}}, socket) do
+  def handle_info(%{event: "message_pinned"}, socket) do
     pinned_messages = Messaging.list_pinned_messages(socket.assigns.conversation_id)
     {:noreply, assign(socket, pinned_messages: pinned_messages)}
   end
 
-  def handle_info(%{event: "message_unpinned", payload: %{message_id: message_id}}, socket) do
+  def handle_info(%{event: "message_unpinned"}, socket) do
     pinned_messages = Messaging.list_pinned_messages(socket.assigns.conversation_id)
     {:noreply, assign(socket, pinned_messages: pinned_messages)}
   end

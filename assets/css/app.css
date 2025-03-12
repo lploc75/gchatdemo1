@@ -404,6 +404,8 @@ button[type="submit"]:hover {
     -webkit-line-clamp: 3;
     line-clamp: 3;
     /* Thuộc tính chuẩn cho số dòng giới hạn */
+    word-wrap: break-word;
+    /* Cho phép ngắt từ khi vượt quá độ rộng */
 }
 
 /* Thêm !important để đảm bảo override */
@@ -467,12 +469,25 @@ button[type="submit"]:hover {
     margin: 5px 0;
     border-radius: 4px;
     display: flex;
-    justify-content: space-between;
+    /* Flex container */
     align-items: center;
+    /* Căn giữa theo chiều dọc */
+    max-width: 100%;
+    /* Đảm bảo không vượt quá khung */
 }
 
 .pinned-content {
     flex-grow: 1;
+    /* Chiếm hết không gian trống */
+    min-width: 0;
+    /* Cho phép co giãn khi flex */
+    /* Các thuộc tính giúp ngắt dòng bắt buộc khi gặp chuỗi dài không có dấu cách */
+    white-space: normal;
+    word-break: break-all;
+    overflow-wrap: break-word;
+    /* Nếu bạn muốn giữ xuống dòng theo "\n" của người dùng thì dùng:
+       white-space: pre-wrap;
+    */
 }
 
 .unpin-button {
@@ -482,6 +497,8 @@ button[type="submit"]:hover {
     cursor: pointer;
     padding: 4px 8px;
     border-radius: 4px;
+    margin-left: 8px;
+    /* Tạo chút khoảng cách với nội dung */
 }
 
 .unpin-button:hover {

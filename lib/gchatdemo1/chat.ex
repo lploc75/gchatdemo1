@@ -379,12 +379,12 @@ defmodule Gchatdemo1.Chat do
         query
       end
 
-    # query =
-    #   if params["user_id"] do
-    #     where(query, [m], m.user_id == ^params["user_id"])
-    #   else
-    #     query
-    #   end
+    query =
+      if params["user_id"] do
+        where(query, [m], m.user_id == ^params["user_id"])
+      else
+        query
+      end
 
     # query =
     #   if params["from_date"] and params["to_date"] do

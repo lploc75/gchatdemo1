@@ -217,18 +217,23 @@ export class ChatRoom extends LitElement {
   margin-bottom: 15px; /* Tăng khoảng cách giữa các tin nhắn có emoji */
 }
 
-.search-input {
+.search-controls {
   display: none;
-  border: 1px solid #ccc;
   padding: 5px;
   border-radius: 5px;
   margin-left: 10px;
 }
 
-.search-input.visible {
+.search-controls.visible {
   display: block;
 }
 
+.search-input {
+  border: 1px solid #ccc;
+  padding: 5px;
+  border-radius: 5px;
+  flex-grow: 1;
+}
 `;
 
   static properties = {
@@ -324,7 +329,9 @@ export class ChatRoom extends LitElement {
         };
       });
       console.log("✅ Tin nhắn sau khi gán sender:", this.messages);
-
+    // 🔹 Gọi hàm loadMembers để tải danh sách thành viên
+    await this.loadMembers(group.conversation.id);
+    console.log("👥 SELECTED GROUP:", this.selectedGroup);
     } catch (error) {
       console.error("❌ Lỗi khi tải tin nhắn:", error);
       this.messages = []; // Nếu lỗi, giữ giá trị là mảng rỗng
@@ -620,7 +627,7 @@ export class ChatRoom extends LitElement {
       if (res.ok) {
         const newGroup = {
           conversation: data.group, // Đưa group vào conversation
-          admin_user_id: data.group.creator_id // Giả định creator là admin
+          admin_user_id: data.group.creator_id // Người tạo là admin
         };
         this.groups = [...this.groups, newGroup];
         console.log("Danh sách nhóm sau khi thêm:", this.groups);
@@ -641,7 +648,7 @@ export class ChatRoom extends LitElement {
       const response = await fetch("/api/groups/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: this.editingGroup?.conversation.id }),
+        body: JSON.stringify({ conversation_id: this.selectedGroup?.conversation.id }),
       });
 
       const result = await response.json();
@@ -649,7 +656,7 @@ export class ChatRoom extends LitElement {
         alert(result.message);
 
         // Cập nhật lại danh sách nhóm sau khi xóa
-        this.groups = this.groups.filter(group => group.conversation.id !== this.editingGroup?.conversation.id);
+        this.groups = this.groups.filter(group => group.conversation.id !== this.selectedGroup?.conversation.id);
         this.closeEditGroupModal();
       } else {
         alert(result.message || "Có lỗi xảy ra!");
@@ -667,13 +674,13 @@ export class ChatRoom extends LitElement {
       const response = await fetch("/api/groups/leave", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: this.editingGroup?.conversation.id }),
+        body: JSON.stringify({ conversation_id: this.selectedGroup?.conversation.id }),
       });
 
       const result = await response.json();
       if (response.ok) {
         // Cập nhật danh sách nhóm sau khi rời nhóm
-        this.groups = this.groups.filter(group => group.conversation.id !== this.editingGroup?.conversation.id);
+        this.groups = this.groups.filter(group => group.conversation.id !== this.selectedGroup?.conversation.id);
         alert(result.message);
         this.closeEditGroupModal(); // Đóng modal sau khi rời nhóm
       } else {
@@ -686,16 +693,16 @@ export class ChatRoom extends LitElement {
   }
 
   async saveGroupEdit() {
-    if (!this.editingGroup || !this.editingGroupName.trim()) return;
+    if (!this.selectedGroup || !this.selectedGroupName.trim()) return;
 
     try {
       const res = await fetch("/api/groups/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: this.editingGroup.conversation.id, // lấy id từ conversation
+          id: this.selectedGroup.conversation.id, // lấy id từ conversation
           conversation: {
-            name: this.editingGroupName.trim(),
+            name: this.selectedGroupName.trim(),
             only_admin_can_message: this.onlyAdminCanMessage,
             visibility: this.visibility
           }
@@ -708,12 +715,12 @@ export class ChatRoom extends LitElement {
       if (data.status === "ok") {
         // Cập nhật UI: Cập nhật thông tin trong conversation
         this.groups = this.groups.map(group =>
-          group.conversation.id === this.editingGroup.conversation.id
+          group.conversation.id === this.selectedGroup.conversation.id
             ? {
               ...group,
               conversation: {
                 ...group.conversation,
-                name: this.editingGroupName.trim(),
+                name: this.selectedGroupName.trim(),
                 only_admin_can_message: this.onlyAdminCanMessage,
                 visibility: this.visibility
               }
@@ -742,6 +749,7 @@ export class ChatRoom extends LitElement {
       this.selectedFriends.delete(userId);
     }
   }
+
   async addSelectedFriendsToGroup() {
     if (!this.selectedFriends || this.selectedFriends.size === 0) {
       alert("Vui lòng chọn ít nhất một người bạn để thêm vào nhóm!");
@@ -749,7 +757,7 @@ export class ChatRoom extends LitElement {
     }
 
     try {
-      const conversationId = this.editingGroup.conversation.id;
+      const conversationId = this.selectedGroup.conversation.id;
       const userIds = Array.from(this.selectedFriends); // Chuyển Set thành mảng
 
       for (const userId of userIds) {
@@ -782,14 +790,14 @@ export class ChatRoom extends LitElement {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          conversation_id: this.editingGroup.conversation.id,
+          conversation_id: this.selectedGroup.conversation.id,
           user_id: userId,
         }),
       });
 
       const data = await res.json();
       if (res.ok) {
-        this.editingGroup.members = this.editingGroup.members.filter(m => m.id !== userId);
+        this.selectedGroup.members = this.selectedGroup.members.filter(m => m.id !== userId);
         alert("Xóa thành viên thành công!");
         this.requestUpdate();
       } else {
@@ -848,49 +856,67 @@ export class ChatRoom extends LitElement {
     this.requestUpdate();
   }
 
-  openEditGroupModal(event, group) {
+  async openEditGroupModal(event, group) {
     event.stopPropagation(); // Ngăn chặn sự kiện click lan ra ngoài
-    this.editingGroup = group;
-    console.log("🚀 Đang chỉnh sửa nhóm:", this.editingGroup);
+    this.selectedGroup = group;
+    console.log("🚀 Đang chỉnh sửa nhóm:", this.selectedGroup);
+
+    // 🔹 Đóng các modal khác trước khi mở modal chỉnh sửa
     this.closeMemberListModal();
     this.closeAddMemberModal();
     this.closeCreateGroupModal();
-    this.editingGroupName = group.conversation.name;
+
+    // 🔹 Gán thông tin nhóm vào biến state
+    this.selectedGroupName = group.conversation.name;
     this.onlyAdminCanMessage = group.conversation.only_admin_can_message; // ✅ Cập nhật checkbox
     this.visibility = group.conversation.visibility; // ✅ Cập nhật dropdown
+
+    try {
+      // 🔹 Gọi loadMembers để lấy danh sách thành viên mới nhất
+      await this.loadMembers(group.conversation.id);
+      console.log("👥 Danh sách thành viên đã tải:", this.selectedGroup.members);
+    } catch (error) {
+      console.error("❌ Lỗi khi tải danh sách thành viên:", error);
+    }
+    
     this.showEditGroupModal = true;
     this.requestUpdate();
   }
 
   async openAddMemberModal() {
-    await this.getNonGroupFriends(this.editingGroup.conversation.id);
-    console.log(this.editingGroup.conversation.id);
+    await this.getNonGroupFriends(this.selectedGroup.conversation.id);
+    console.log(this.selectedGroup.conversation.id);
     this.showEditGroupModal = false;
 
     this.showAddMemberModal = true;
     this.requestUpdate();
   }
 
-  async openMemberListModal() {
+  async loadMembers() {
     try {
-      const res = await fetch(`/api/groups/${this.editingGroup.conversation.id}/members`);
+      const res = await fetch(`/api/groups/${this.selectedGroup.conversation.id}/members`);
       const data = await res.json();
-
+  
       if (data.status === "ok") {
-        this.editingGroup.members = data.members; // 🛠 Cập nhật vào editingGroup
-        console.log("🚀 Đang chỉnh sửa nhóm:", this.editingGroup);
+        this.selectedGroup.members = data.members; // Gán danh sách thành viên vào nhóm đã chọn
+        // console.log("👥 Thành viên của nhóm:", this.selectedGroup.members);
       } else {
-        console.error("Lỗi khi lấy danh sách thành viên:", data.errors);
+        console.error("❌ Lỗi khi tải danh sách thành viên:", data.errors);
       }
     } catch (error) {
-      console.error("Lỗi khi lấy danh sách thành viên:", error);
+      console.error("❌ Lỗi khi tải danh sách thành viên:", error);
+      this.selectedGroup.members = [];
     }
-
+  }
+  openMemberListModal() {
+    if (!this.selectedGroup || !this.selectedGroup.members) {
+      console.error("❌ Không có nhóm nào được chọn hoặc danh sách thành viên trống!");
+      return;
+    }
     this.showEditGroupModal = false;
     this.showMemberListModal = true;
     this.requestUpdate();
   }
-
 
   // Đóng modal
   closeCreateGroupModal() {
@@ -936,13 +962,25 @@ export class ChatRoom extends LitElement {
                   <div class="messages">
                     <div class="search-container">
                       <button class="search-icon" @click="${this.toggleSearch}">&#x1F50E;&#xFE0E;</button>
-                       <input 
-                          type="text" 
-                          class="search-input ${this.showSearchInput ? 'visible' : ''}" 
-                          placeholder="Nhập nội dung tìm kiếm..." 
-                          @input="${this.searchMessages}"
-                          .value="${this.searchQuery}">
-                    </div>
+
+                      <!-- 🔹 Dropdown và ô tìm kiếm -->
+                      <div class="search-controls ${this.showSearchInput ? 'visible' : ''}">
+                      <input 
+                      type="text" 
+                      class="search-input"
+                      placeholder="Nhập nội dung tìm kiếm..." 
+                      @input="${this.searchMessages}"
+                      .value="${this.searchQuery}">
+
+                      <select class="member-select" @change="${this.onMemberSelect}">
+                        <option value="">Chọn thành viên</option>
+                        ${this.selectedGroup.members?.map(member => html`
+                          <option value="${member.id}">${member.email}</option>
+                        `)}
+                      </select>
+                  </div>
+
+                  </div>
                     <!-- 🔥 Nếu có kết quả tìm kiếm, hiển thị danh sách tìm kiếm -->
                     ${this.searchResults && this.searchResults.length > 0 ? html`
                     <div class="search-results">
@@ -977,8 +1015,7 @@ export class ChatRoom extends LitElement {
                                     `) ?? ''}
                                   </div>
                                 ` : ''}
-                              ` : msg.content)
-      }
+                              ` : msg.content)}
                         </div>
 
                         ${msg.reaction ? html`<div class="reaction">${msg.reaction}</div>` : ""}  
@@ -1055,15 +1092,15 @@ export class ChatRoom extends LitElement {
           <div class="modal">
             <h3>Chỉnh sửa nhóm</h3>
             <form @submit="${this.saveGroupEdit}">
-            <input type="hidden" .value="${this.editingGroup?.conversation.id}" />
+            <input type="hidden" .value="${this.selectedGroup?.conversation.id}" />
               
           
               <!-- Nhập tên nhóm -->
               <input type="text"
-               .value="${this.editingGroupName}"
-               @input="${(e) => this.editingGroupName = e.target.value}"
+               .value="${this.selectedGroupName}"
+               @input="${(e) => this.selectedGroupName = e.target.value}"
                placeholder="Tên nhóm"
-               ?disabled="${this.userId !== this.editingGroup?.admin_user_id}"
+               ?disabled="${this.userId !== this.selectedGroup?.admin_user_id}"
                required />
 
               <!-- Chỉ admin có thể nhắn tin -->
@@ -1071,7 +1108,7 @@ export class ChatRoom extends LitElement {
                 <input type="checkbox"
                       .checked="${this.onlyAdminCanMessage}"
                       @change="${(e) => this.onlyAdminCanMessage = e.target.checked}"
-                      ?disabled="${this.userId !== this.editingGroup?.admin_user_id}" />
+                      ?disabled="${this.userId !== this.selectedGroup?.admin_user_id}" />
                 Chỉ admin có thể nhắn tin
               </label>
 
@@ -1080,13 +1117,13 @@ export class ChatRoom extends LitElement {
               <select id="visibility"
                       .value="${this.visibility}"
                       @change="${(e) => this.visibility = e.target.value}"
-                      ?disabled="${this.userId !== this.editingGroup?.admin_user_id}">
+                      ?disabled="${this.userId !== this.selectedGroup?.admin_user_id}">
                 <option value="public">Công khai</option>
                 <option value="private">Riêng tư</option>
               </select>
 
       
-              ${!(this.visibility === "private" && this.userId !== this.editingGroup?.admin_user_id)
+              ${!(this.visibility === "private" && this.userId !== this.selectedGroup?.admin_user_id)
           ? html`<button type="button" @click="${this.openAddMemberModal}">Thêm thành viên</button>`
           : ''}
 
@@ -1097,7 +1134,7 @@ export class ChatRoom extends LitElement {
               <button type="button" class="leave-button" @click="${this.leaveGroup}">Rời nhóm</button>
 
               <!-- Nút xóa nhóm, chỉ hiện nếu là admin -->
-              ${this.userId === this.editingGroup?.admin_user_id ? html`
+              ${this.userId === this.selectedGroup?.admin_user_id ? html`
                 <button type="button" class="delete-button" @click="${this.deleteGroup}">Xóa nhóm</button>
               ` : ''}
               <div>
@@ -1139,10 +1176,10 @@ export class ChatRoom extends LitElement {
               <h3>Danh sách thành viên</h3>
 
               <ul>
-                ${this.editingGroup.members?.length ? this.editingGroup.members.map(member => html`
+                ${this.selectedGroup.members?.length ? this.selectedGroup.members.map(member => html`
                   <li>
                     ${member.email} 
-                    ${this.userId === this.editingGroup?.admin_user_id ?
+                    ${this.userId === this.selectedGroup?.admin_user_id ?
               html`<button @click="${() => this.removeMember(member.id)}">Xóa</button>`
               : ''}                 
                     </li>
