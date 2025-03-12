@@ -30,7 +30,7 @@ defmodule Gchatdemo1.Chat do
       where: m.is_deleted == false or m.user_id != ^user_id,
       order_by: [asc: m.inserted_at],
       # Nhóm theo tin nhắn
-      group_by: [m.id, u.email, r.emoji],
+      group_by: [m.id, u.email, u.avatar_url, r.emoji],
       select: %{
         id: m.id,
         user_id: m.user_id,
@@ -39,6 +39,7 @@ defmodule Gchatdemo1.Chat do
         is_recalled: m.is_recalled,
         is_edited: m.is_edited,
         user_email: u.email,
+        avatar_url: u.avatar_url,
         # Chỉ lấy 1 emoji
         reaction: r.emoji
       }

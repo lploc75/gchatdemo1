@@ -12,7 +12,8 @@ defmodule Gchatdemo1.Messaging do
         conversation_id: conversation_id,
         content: content,
         is_forwarded: opts[:is_forwarded] || false,
-        original_sender_id: opts[:original_sender_id] || nil
+        original_sender_id: opts[:original_sender_id] || nil,
+        reply_to_id: opts[:reply_to_id]
       })
 
     case Repo.insert(changeset) do

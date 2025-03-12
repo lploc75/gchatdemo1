@@ -18,6 +18,7 @@ defmodule Gchatdemo1Web.ChatController do
     messages = Chat.list_messages(conversation_id, user.id)
     json(conn, messages)
   end
+
   def forward_message(conn, %{"message_id" => message_id, "conversation_id" => conversation_id}) do
     user_id = conn.assigns[:current_user].id
 

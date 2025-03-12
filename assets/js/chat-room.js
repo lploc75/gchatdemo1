@@ -64,6 +64,24 @@ export class ChatRoom extends LitElement {
     font-weight: bold;
   }
 
+  .avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-right: 10px;
+  }
+  
+  .message-container {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 10px;
+  }
+    
+  .message-container.me {
+      flex-direction: row-reverse; /* Đảo ngược hướng avatar/text */
+  }
+    
   .messages {
     position: relative; /* Làm gốc để căn chỉnh icon tìm kiếm */
     flex: 1;
@@ -98,11 +116,10 @@ export class ChatRoom extends LitElement {
     color: #333;
     z-index: 10; /* Đảm bảo nằm trên tin nhắn */
   }
-    
+
   .message.me { 
-    align-self: flex-end; 
-    background: #007bff; 
-    color: #fff;
+  background: #0084ff;
+  align-self: flex-end;    color: #fff;
   }
 
   .message.other { 
@@ -323,12 +340,13 @@ export class ChatRoom extends LitElement {
           content: msg.content,
           sender: msg.user_id === this.userId ? "me" : "other",
           email: msg.user_email, // Lấy email từ API
+          avatar_url: msg.avatar_url,
           reaction: msg.reaction, // Lấy emoji từ API
           is_recalled: msg.is_recalled, // Tin nhắn bị thu hồi
           is_edited: msg.is_edited, // Tin nhắn đã sửa
         };
       });
-      console.log("✅ Tin nhắn sau khi gán sender:", this.messages);
+      console.log("✅ Tin nhắn sau khi format:", this.messages);
     // 🔹 Gọi hàm loadMembers để tải danh sách thành viên
     await this.loadMembers(group.conversation.id);
     console.log("👥 SELECTED GROUP:", this.selectedGroup);
@@ -1046,32 +1064,26 @@ export class ChatRoom extends LitElement {
                       `)}
                     </div>
                     ` : html`
-                    <!-- 🔥 Hiển thị tin nhắn bình thường -->
-                    ${this.messages.map((msg) => html`
-                      <div class="message ${msg.sender} ${msg.reaction ? 'has-reaction' : ''}" data-id="${msg.id}"
-                        @contextmenu="${(e) => this.showContextMenu(e, msg.id)}">
-                        <div class="email">${msg.email}</div> 
-                        <div class="content">
-                          ${this.editingMessageId === msg.id ? html`
-                            <input type="text" .value="${this.editingMessageContent}"
-                              @input="${(e) => this.editingMessageContent = e.target.value}" />
-                            <button @click="${() => this.saveEditedMessage(msg.id)}">Lưu</button>
-                            <button @click="${() => this.cancelEditing()}">Hủy</button>
-                          ` : (msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>`
-                            : msg.is_edited ? html`
-                                <span class="edited-text" @click="${() => this.toggleEditHistory(msg.id)}">
-                                  ${msg.content} <span class="edited-label">(Đã chỉnh sửa)</span>
-                                </span>
-                                ${this.showEditHistoryId === msg.id ? html`
-                                  <div class="edit-history">
-                                    ${this.editHistory[msg.id]?.map(edit => html`
-                                      <div class="edit-item">${edit.previous_content}</div>
-                                    `) ?? ''}
-                                  </div>
-                                ` : ''}
-                              ` : msg.content)}
-                        </div>
-
+                     ${this.messages.map((msg) => html`
+        <div class="message-container ${msg.sender === 'me' ? 'me' : 'other'}">
+          ${msg.sender !== 'me' ? html`<img class="avatar" src="${msg.avatar_url}" alt="Avatar">` : ''}
+          <div class="message ${msg.sender}">
+            <div class="email">${msg.email}</div>
+            <div class="content">
+              ${msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>` 
+              : msg.is_edited ? html`
+                <span class="edited-text" @click="${() => this.toggleEditHistory(msg.id)}">
+                  ${msg.content} <span class="edited-label">(Đã chỉnh sửa)</span>
+                </span>
+                ${this.showEditHistoryId === msg.id ? html`
+                  <div class="edit-history">
+                    ${this.editHistory[msg.id]?.map(edit => html`
+                      <div class="edit-item">${edit.previous_content}</div>
+                    `) ?? ''}
+                  </div>
+                ` : ''}
+              ` : msg.content}
+            </div>
                         ${msg.reaction ? html`<div class="reaction">${msg.reaction}</div>` : ""}  
 
                         <!-- Nút thả emoji ẩn, hiện khi hover -->

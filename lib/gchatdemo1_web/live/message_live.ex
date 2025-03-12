@@ -120,7 +120,8 @@ defmodule Gchatdemo1Web.MessageLive do
          search_query: "",
          # Thêm expanded_messages vào đây
          expanded_messages: %{},
-         pinned_messages: pinned_messages
+         pinned_messages: pinned_messages,
+         replying_to: nil
        )}
     else
       {:ok, redirect(socket, to: "/users/log_in")}
@@ -131,24 +132,27 @@ defmodule Gchatdemo1Web.MessageLive do
   def handle_event("send_message", %{"content" => content}, socket) do
     current_user = socket.assigns.current_user
     conversation_id = socket.assigns.conversation_id
-
     max_length = 2000
 
     if String.length(content) > max_length do
       {:noreply, put_flash(socket, :error, "Tin nhắn quá dài (tối đa #{max_length} ký tự)")}
     else
-      case Messaging.send_message(current_user.id, conversation_id, content) do
+      reply_to_id = socket.assigns[:replying_to] && socket.assigns.replying_to.id
+
+      case Messaging.send_message(current_user.id, conversation_id, content, %{
+             reply_to_id: reply_to_id
+           }) do
         {:ok, message} ->
           topic = chat_topic(conversation_id)
           Gchatdemo1Web.Endpoint.broadcast!(topic, "new_message", %{message: message})
-          # <-- XÓA DÒNG APPEND Ở ĐÂY
-          {:noreply, socket}
+          {:noreply, assign(socket, replying_to: nil)}
 
         {:error, _} ->
           {:noreply, put_flash(socket, :error, "Không thể gửi tin nhắn")}
       end
     end
   end
+
   def handle_event("recall_message", %{"message_id" => message_id}, socket) do
     case Messaging.recall_message(message_id) do
       {:ok, recalled_message} ->
@@ -443,7 +447,14 @@ end
         {:noreply, put_flash(socket, :error, "Lỗi khi gỡ ghim tin nhắn")}
     end
   end
+  def handle_event("start_reply", %{"message_id" => message_id}, socket) do
+    reply_to = Messaging.get_message(message_id)
+    {:noreply, assign(socket, replying_to: reply_to)}
+  end
 
+  def handle_event("cancel_reply", _, socket) do
+    {:noreply, assign(socket, replying_to: nil)}
+  end
   # Xử lý sự kiện tin nhắn đã được nhận
   def handle_info(%{event: "message_delivered", payload: %{message_id: message_id}}, socket) do
     current_user_id = socket.assigns.current_user.id
@@ -544,36 +555,43 @@ end
 end
 
 def handle_info(%{event: "new_message", payload: %{message: new_message}}, socket) do
-if new_message.conversation_id == socket.assigns.conversation_id do
-updated_messages =
-  socket.assigns.messages
-  |> Enum.reject(&(&1.id == new_message.id))
-  |> Kernel.++([new_message])
+  if new_message.conversation_id == socket.assigns.conversation_id do
+    # Nếu tin nhắn có reply_to_id, load thêm thông tin của tin nhắn gốc
+    updated_message =
+      if new_message.reply_to_id do
+        %{new_message | reply_to: Messaging.get_message(new_message.reply_to_id)}
+      else
+        new_message
+      end
 
-current_user_id = socket.assigns.current_user.id
-friend_id = socket.assigns.friend.id
+    updated_messages =
+      socket.assigns.messages
+      |> Enum.reject(&(&1.id == updated_message.id))
+      |> Kernel.++([updated_message])
 
-if new_message.user_id == friend_id do
-  # Đánh dấu tin nhắn của friend là "seen"
-  case Messaging.mark_messages_as_seen(new_message.conversation_id, current_user_id) do
-    {count, _} -> {:ok, count}
+    current_user_id = socket.assigns.current_user.id
+    friend_id = socket.assigns.friend.id
+
+    # Nếu tin nhắn được gửi từ bạn bè, đánh dấu là "seen" và broadcast event
+    if new_message.user_id == friend_id do
+      case Messaging.mark_messages_as_seen(new_message.conversation_id, current_user_id) do
+        {count, _} -> {:ok, count}
+      end
+
+      Gchatdemo1Web.Endpoint.broadcast!(
+        chat_topic(new_message.conversation_id),
+        "messages_seen",
+        %{
+          conversation_id: new_message.conversation_id,
+          reader_id: current_user_id
+        }
+      )
+    end
+
+    {:noreply, assign(socket, messages: updated_messages)}
+  else
+    {:noreply, socket}
   end
-
-  # Broadcast sự kiện "messages_seen" với payload thống nhất
-  Gchatdemo1Web.Endpoint.broadcast!(
-    chat_topic(new_message.conversation_id),
-    "messages_seen",
-    %{
-      conversation_id: new_message.conversation_id,
-      reader_id: current_user_id
-    }
-  )
-end
-
-{:noreply, assign(socket, messages: updated_messages)}
-else
-{:noreply, socket}
-end
 end
 
   # Xử lý broadcast event "message_edited"
@@ -717,6 +735,14 @@ end
                         >
                           Chuyển tiếp
                         </button>
+
+                        <button
+                          type="button"
+                          phx-click="start_reply"
+                          phx-value-message_id={message.id}
+                        >
+                          Trả lời
+                        </button>
                       <% else %>
                         <!-- Nếu tin nhắn chưa chuyển tiếp, cho phép thu hồi, chỉnh sửa, xóa và chuyển tiếp -->
                         <button
@@ -749,6 +775,14 @@ end
                         >
                           Chuyển tiếp
                         </button>
+
+                        <button
+                          type="button"
+                          phx-click="start_reply"
+                          phx-value-message_id={message.id}
+                        >
+                          Trả lời
+                        </button>
                       <% end %>
                     <% end %>
                   </div>
@@ -768,6 +802,10 @@ end
                     >
                       Chuyển tiếp
                     </button>
+
+                    <button type="button" phx-click="start_reply" phx-value-message_id={message.id}>
+                      Trả lời
+                    </button>
                   </div>
                 </div>
               </div>
@@ -779,6 +817,14 @@ end
               <%= if message.is_forwarded do %>
                 <div class="forwarded-message-header">
                   {Accounts.get_user(message.user_id).email} đã chuyển tiếp một tin nhắn
+                </div>
+              <% end %>
+              <!-- Nếu tin nhắn là trả lời, hiển thị thông tin của tin nhắn gốc -->
+              <%= if message.reply_to_id do %>
+                <% reply_to = Messaging.get_message(message.reply_to_id) %>
+                <div class="reply-content">
+                  <strong>Trả lời {reply_to.user.email}:</strong>
+                  <p>{truncate(reply_to.content, length: 100)}</p>
                 </div>
               <% end %>
 
@@ -806,14 +852,20 @@ end
                 <% end %>
               </div>
               <!-- Nút Ghim/Gỡ ghim của từng tin nhắn -->
-              <%= if not Enum.any?(@pinned_messages, fn m -> m.id == message.id end) do %>
-                <button phx-click="pin_message" phx-value-message_id={message.id}>
-                  Ghim
-                </button>
-              <% else %>
-                <button phx-click="unpin_message" phx-value-message_id={message.id}>
-                  Gỡ ghim
-                </button>
+              <%= if not message.is_recalled do %>
+                <%= if Enum.any?(@pinned_messages, fn m -> m.id == message.id end) do %>
+                  <button
+                    phx-click="unpin_message"
+                    phx-value-message_id={message.id}
+                    class="unpin-btn"
+                  >
+                    🗑️ Gỡ ghim
+                  </button>
+                <% else %>
+                  <button phx-click="pin_message" phx-value-message_id={message.id} class="pin-btn">
+                    📌 Ghim
+                  </button>
+                <% end %>
               <% end %>
 
     <!-- Hiển thị reactions -->
@@ -957,20 +1009,18 @@ end
           </form>
         </.modal>
       <% end %>
-
-    <!-- Ô nhập tin nhắn -->
+      <!-- Phần preview khi đang trả lời: hiển thị ở trên ô nhập tin nhắn -->
+      <%= if @replying_to do %>
+        <div class="reply-preview">
+          Đang trả lời {@replying_to.user.email}: {truncate(@replying_to.content, length: 50)}
+          <button phx-click="cancel_reply">Hủy</button>
+        </div>
+      <% end %>
+      <!-- Ô nhập tin nhắn -->
       <form phx-submit="send_message">
         <div class="chat-input">
           <input type="text" name="content" placeholder="Nhập tin nhắn..." required />
-          <label for="file-upload">
-            📎 <input type="file" id="file-upload" hidden phx-change="upload_file" />
-          </label>
-
-          <label for="image-upload">
-            🖼️
-            <input type="file" id="image-upload" accept="image/*" hidden phx-change="upload_image" />
-          </label>
-           <button type="submit">Gửi</button>
+          <button type="submit">Gửi</button>
         </div>
       </form>
     </div>
@@ -1005,4 +1055,13 @@ end
   defp chat_topic(conversation_id) do
     "conversation:#{conversation_id}"
   end
+
+  def truncate(text, length) when is_binary(text) and length > 0 do
+    if String.length(text) > length do
+      String.slice(text, 0, length) <> "..."
+    else
+      text
+    end
+  end
+
 end

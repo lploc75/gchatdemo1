@@ -509,3 +509,41 @@ button[type="submit"]:hover {
     color: #999;
     font-style: italic;
 }
+.reply-preview {
+    background-color: #e8f5e9;
+    /* nền xanh nhạt */
+    padding: 10px;
+    margin-bottom: 12px;
+    border-left: 4px solid #4CAF50;
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.95em;
+}
+
+.reply-preview button {
+    background-color: transparent;
+    border: 1px solid #4CAF50;
+    color: #4CAF50;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.reply-preview button:hover {
+    background-color: #4CAF50;
+    color: #fff;
+}
+
+.reply-content {
+    font-size: 0.9em;
+    color: #212121;
+
+    padding-left: 10px;
+    margin: 6px 0;
+    border-radius: 2px;
+    opacity: 0.9;
+    /* Làm mờ toàn bộ nội dung */
+}
