@@ -18,18 +18,29 @@ defmodule Gchatdemo1Web.ChatController do
     messages = Chat.list_messages(conversation_id, user.id)
     json(conn, messages)
   end
-
   def forward_message(conn, %{"message_id" => message_id, "conversation_id" => conversation_id}) do
     user_id = conn.assigns[:current_user].id
+
     with {:ok, original_message} <- Chat.get_message(message_id),
-         {:ok, new_message} <- Chat.forward_message(original_message, conversation_id, user_id) do
+         {:ok, new_message} <- Chat.forward_message(original_message, conversation_id, user_id),
+         new_message <- Repo.preload(new_message, [:user]) do
       conn
       |> put_status(:created)
-      |> json(%{status: "ok", message: new_message})
+      |> json(%{
+        status: "ok",
+        message: %{
+          id: new_message.id,
+          content: new_message.content,
+          sender: "me",  # Vì user hiện tại đang forward
+          email: new_message.user.email,
+          reaction: nil  # Giữ nguyên format như danh sách tin nhắn hiện tại
+        }
+      })
     else
       _ -> conn |> put_status(:unprocessable_entity) |> json(%{error: "Không thể forward tin nhắn"})
     end
   end
+
 
   def search_messages(conn, params) do
     messages = Chat.search_messages(params)

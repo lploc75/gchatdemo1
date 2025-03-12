@@ -15,6 +15,12 @@ defmodule Gchatdemo1.Chat.Message do
     field :status, :string, default: "sent"
     field :file_url, :string
     field :is_forwarded, :boolean, default: false
+
+    belongs_to :reply_to, Gchatdemo1.Chat.Message,
+      foreign_key: :reply_to_id,
+      references: :id,
+      type: :integer
+
     belongs_to :original_sender, Gchatdemo1.Accounts.User, foreign_key: :original_sender_id
     has_many :message_edits, Gchatdemo1.Chat.MessageEdit
     has_many :reactions, Gchatdemo1.Chat.Reaction
@@ -34,7 +40,8 @@ defmodule Gchatdemo1.Chat.Message do
       :status,
       :file_url,
       :is_forwarded,
-      :original_sender_id
+      :original_sender_id,
+      :reply_to_id
     ])
     |> validate_required([:user_id, :conversation_id, :content])
   end

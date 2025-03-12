@@ -890,16 +890,16 @@ export class ChatRoom extends LitElement {
       })
     });
     const data = await response.json();
-    console.log("Phản hồi từ API:", data); // Debug toàn bộ phản hồi
-    console.log("Tin nhắn mới:", data.message);
-    console.log("Danh sách tin nhắn trước khi cập nhật:", this.messages);
+    // console.log("Phản hồi từ API:", data); // Debug toàn bộ phản hồi
+    // console.log("Tin nhắn mới:", data.message);
+    // console.log("Danh sách tin nhắn trước khi cập nhật:", this.messages);
 
     if (response.ok) {
       alert("Tin nhắn đã được chia sẻ!");
       if (data.message) {
         this.messages = [...this.messages, data.message];
       }
-      console.log("Danh sách tin nhắn sau khi cập nhật:", this.messages);
+      // console.log("Danh sách tin nhắn sau khi cập nhật:", this.messages);
 
       this.closeShareModal();
     } else {
