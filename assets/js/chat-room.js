@@ -807,26 +807,37 @@ export class ChatRoom extends LitElement {
       console.error("❌ Lỗi khi xóa thành viên:", error);
     }
   }
-
+  // Gọi tìm kiếm tin nhắn sau khi chọn người gửi
+  onMemberSelect(event) {
+    this.selectedFindUserId = event.target.value;
+    console.log("👤 Đã chọn user_id:", this.selectedFindUserId);
+    this.searchMessages(); // Gọi lại tìm kiếm ngay khi chọn user
+  }
+  
   // Tìm kiếm tin nhắn
-  async searchMessages(event) {
-    const content = event.target.value.trim();
-    this.searchQuery = event.target.value; // Lưu từ khoá tìm kiếm
+  async searchMessages() {
+    const content = this.searchQuery.trim();
+    const userId = this.selectedFindUserId; // Lấy user_id từ dropdown
+    const conversationId = this.selectedGroup?.conversation?.id || '';
 
-    console.log("Từ khoá tìm kiếm:", this.searchQuery); // Debug
+    console.log("🔍 Từ khoá:", content, "| 👤 User ID:", userId, "| 💬 Conversation ID:", conversationId);
 
-    if (content === '') {
-      this.searchResults = []; // Khi xóa nội dung tìm kiếm, hiển thị tin nhắn bình thường
-      this.requestUpdate(); // Buộc cập nhật UI ngay
+    if (content === '' && !userId) {
+      this.searchResults = [];
+      this.requestUpdate();
       return;
     }
 
     try {
-      // Lấy ID của cuộc trò chuyện
-      const conversationId = this.selectedGroup?.conversation?.id || '';
+      // Xây dựng URL query
+      const params = new URLSearchParams();
+      if (content) params.append("content", content);
+      if (conversationId) params.append("conversation_id", conversationId);
+      if (userId) params.append("user_id", userId);
 
-      const response = await fetch(`/api/messages/search?content=${encodeURIComponent(content)}&conversation_id=${conversationId}`);
+      const response = await fetch(`/api/messages/search?${params.toString()}`);
       if (!response.ok) throw new Error('Lỗi khi gọi API');
+
       const data = await response.json();
       // Cập nhật danh sách tin nhắn tìm được và xác định sender
       this.searchResults = data.messages.map(msg => ({
@@ -844,6 +855,7 @@ export class ChatRoom extends LitElement {
   toggleSearch() {
     this.showSearchInput = !this.showSearchInput;
     this.searchQuery = "";  // Xoá nội dung tìm kiếm
+    this.selectedFindUserId = ""; // Reset lại thành viên đã chọn
     this.searchResults = []; // Xoá kết quả tìm kiếm
     this.requestUpdate();
   }
@@ -908,6 +920,7 @@ export class ChatRoom extends LitElement {
       this.selectedGroup.members = [];
     }
   }
+
   openMemberListModal() {
     if (!this.selectedGroup || !this.selectedGroup.members) {
       console.error("❌ Không có nhóm nào được chọn hoặc danh sách thành viên trống!");
@@ -969,10 +982,10 @@ export class ChatRoom extends LitElement {
                       type="text" 
                       class="search-input"
                       placeholder="Nhập nội dung tìm kiếm..." 
-                      @input="${this.searchMessages}"
-                      .value="${this.searchQuery}">
+                      @input="${(e) => { this.searchQuery = e.target.value; this.searchMessages(); }}"
+                                          .value="${this.searchQuery}">
 
-                      <select class="member-select" @change="${this.onMemberSelect}">
+                      <select class="member-select" @change="${this.onMemberSelect}" .value="${this.selectedFindUserId}">
                         <option value="">Chọn thành viên</option>
                         ${this.selectedGroup.members?.map(member => html`
                           <option value="${member.id}">${member.email}</option>
