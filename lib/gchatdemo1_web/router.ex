@@ -132,6 +132,8 @@ defmodule Gchatdemo1Web.Router do
     post "/groups/remove_member", ChatController, :remove_member
     # Rời nhóm
     post "/groups/leave", ChatController, :leave_group
+    # Chuyển tiếp tin nhắn
+    post "/messages/forward", ChatController, :forward_message
 
     # post "/messages", ChatController, :send_message
   end

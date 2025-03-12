@@ -540,6 +540,7 @@ export class ChatRoom extends LitElement {
         console.error("❌ Lỗi khi chỉnh sửa tin nhắn:", err);
       });
   }
+
   cancelEditing() {
     this.editingMessageId = null;
     this.editingMessageContent = "";
@@ -859,6 +860,52 @@ export class ChatRoom extends LitElement {
     this.searchResults = []; // Xoá kết quả tìm kiếm
     this.requestUpdate();
   }
+  async loadMembers() {
+    try {
+      const res = await fetch(`/api/groups/${this.selectedGroup.conversation.id}/members`);
+      const data = await res.json();
+  
+      if (data.status === "ok") {
+        this.selectedGroup.members = data.members; // Gán danh sách thành viên vào nhóm đã chọn
+        // console.log("👥 Thành viên của nhóm:", this.selectedGroup.members);
+      } else {
+        console.error("❌ Lỗi khi tải danh sách thành viên:", data.errors);
+      }
+    } catch (error) {
+      console.error("❌ Lỗi khi tải danh sách thành viên:", error);
+      this.selectedGroup.members = [];
+    }
+  }
+
+  async confirmShare() {
+    const conversationId = this.shadowRoot.getElementById("conversationSelect").value;
+    if (!conversationId || !this.selectedMessageId) return;
+  
+    const response = await fetch("/api/messages/forward", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message_id: this.selectedMessageId,
+        conversation_id: conversationId
+      })
+    });
+    const data = await response.json();
+    console.log("Phản hồi từ API:", data); // Debug toàn bộ phản hồi
+    console.log("Tin nhắn mới:", data.message);
+    console.log("Danh sách tin nhắn trước khi cập nhật:", this.messages);
+
+    if (response.ok) {
+      alert("Tin nhắn đã được chia sẻ!");
+      if (data.message) {
+        this.messages = [...this.messages, data.message];
+      }
+      console.log("Danh sách tin nhắn sau khi cập nhật:", this.messages);
+
+      this.closeShareModal();
+    } else {
+      alert("Lỗi khi chia sẻ tin nhắn.");
+    }
+  }
 
   // Mở modal tạo nhóm và load danh sách bạn bè
   async openCreateGroupModal() {
@@ -904,23 +951,6 @@ export class ChatRoom extends LitElement {
     this.requestUpdate();
   }
 
-  async loadMembers() {
-    try {
-      const res = await fetch(`/api/groups/${this.selectedGroup.conversation.id}/members`);
-      const data = await res.json();
-  
-      if (data.status === "ok") {
-        this.selectedGroup.members = data.members; // Gán danh sách thành viên vào nhóm đã chọn
-        // console.log("👥 Thành viên của nhóm:", this.selectedGroup.members);
-      } else {
-        console.error("❌ Lỗi khi tải danh sách thành viên:", data.errors);
-      }
-    } catch (error) {
-      console.error("❌ Lỗi khi tải danh sách thành viên:", error);
-      this.selectedGroup.members = [];
-    }
-  }
-
   openMemberListModal() {
     if (!this.selectedGroup || !this.selectedGroup.members) {
       console.error("❌ Không có nhóm nào được chọn hoặc danh sách thành viên trống!");
@@ -931,6 +961,13 @@ export class ChatRoom extends LitElement {
     this.requestUpdate();
   }
 
+  openShareModal(messageId) {
+    this.selectedMessageId = messageId;
+    this.showShareModal = true;
+    this.contextMenuVisible = false; // Đóng context menu
+    this.requestUpdate();
+  }
+  
   // Đóng modal
   closeCreateGroupModal() {
     this.showCreateGroupModal = false;
@@ -954,6 +991,10 @@ export class ChatRoom extends LitElement {
     this.requestUpdate();
   }
 
+  closeShareModal() {
+    this.showShareModal = false;
+    this.selectedMessageId = null;
+  }
   render() {
     return html`
       <div class="chat-container">
@@ -1068,14 +1109,35 @@ export class ChatRoom extends LitElement {
 
           return html`
               ${!msg.is_recalled
-              ? html`<button @click="${() => this.recallMessage(this.selectedMessageId)}">Thu hồi tin nhắn</button>
-                    <button @click="${() => this.startEditingMessage(this.selectedMessageId)}">Chỉnh sửa tin nhắn</button>`
+              ? html`
+              <button @click="${() => this.recallMessage(this.selectedMessageId)}">Thu hồi tin nhắn</button>
+              <button @click="${() => this.startEditingMessage(this.selectedMessageId)}">Chỉnh sửa tin nhắn</button>
+              <button @click="${() => this.openShareModal(this.selectedMessageId)}">Chia sẻ tin nhắn</button>
+              `
               : ""}
             <button @click="${() => this.deleteMessage(this.selectedMessageId)}">Xóa tin nhắn</button>
+            
             `;
         })()}
       </div>
         ` : ''}
+
+      <!-- Modal chia sẻ tin nhắn -->
+      ${this.showShareModal ? html`
+        <div class="modal-overlay">
+          <div class="modal">
+            <h3>Chia sẻ tin nhắn</h3>
+            <label for="conversationSelect">Chọn nhóm hoặc người nhận:</label>
+            <select id="conversationSelect">
+              ${this.groups.map(group => html`
+                <option value="${group.conversation.id}">${group.conversation.name}</option>
+              `)}
+            </select>
+            <button @click="${this.confirmShare}">Chia sẻ</button>
+            <button @click="${this.closeShareModal}">Hủy</button>
+          </div>
+        </div>
+      ` : ''}
 
       <!-- Modal tạo nhóm -->
       ${this.showCreateGroupModal ? html`

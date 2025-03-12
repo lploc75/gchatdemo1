@@ -162,7 +162,7 @@ defmodule Gchatdemo1Web.UserAuth do
     else
       socket =
         socket
-        |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
+        |> Phoenix.LiveView.put_flash(:error, "Bạn phải đăng nhập để truy cập trang này.")
         |> Phoenix.LiveView.redirect(to: ~p"/users/log_in")
 
       {:halt, socket}
@@ -211,7 +211,7 @@ defmodule Gchatdemo1Web.UserAuth do
       conn
     else
       conn
-      |> put_flash(:error, "You must log in to access this page.")
+      |> put_flash(:error, "Bạn phải đăng nhập để truy cập trang này.")
       |> maybe_store_return_to()
       |> redirect(to: ~p"/users/log_in")
       |> halt()
@@ -230,5 +230,5 @@ defmodule Gchatdemo1Web.UserAuth do
 
   defp maybe_store_return_to(conn), do: conn
 
-  defp signed_in_path(_conn), do: ~p"/"
+  defp signed_in_path(_conn), do: ~p"/dashboard"
 end

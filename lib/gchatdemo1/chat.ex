@@ -351,6 +351,27 @@ defmodule Gchatdemo1.Chat do
     |> Repo.insert()
   end
 
+  def get_message(message_id) do
+    case Repo.get(Message, message_id) do
+      nil -> {:error, "Tin nhắn không tồn tại"}
+      message -> {:ok, message}
+    end
+  end
+
+  def forward_message(%Message{} = original_message, conversation_id, user_id) do
+    params = %{
+      content: original_message.content,
+      message_type: original_message.message_type,
+      user_id: user_id,  # Người gửi mới
+      conversation_id: conversation_id,
+      is_forwarded: true,
+      original_sender_id: original_message.user_id  # Lưu ID người gửi gốc
+    }
+
+    %Message{}
+    |> Message.changeset(params)
+    |> Repo.insert()
+  end
   @doc """
   Tìm kiếm tin nhắn
   """
@@ -396,13 +417,6 @@ defmodule Gchatdemo1.Chat do
     # query =
     #   if params["message_type"] do
     #     where(query, [m], m.message_type == ^params["message_type"])
-    #   else
-    #     query
-    #   end
-
-    # query =
-    #   if params["has_file"] == "true" do
-    #     where(query, [m], not is_nil(m.file_url))
     #   else
     #     query
     #   end

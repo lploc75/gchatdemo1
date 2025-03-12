@@ -88,7 +88,7 @@ defmodule Gchatdemo1Web.PageController do
 
         render(conn, :search,
           current_user: current_user,
-          searched_user: searched_user,
+searched_user: searched_user,
           # Thêm dòng này
           status: status
         )
@@ -101,12 +101,12 @@ defmodule Gchatdemo1Web.PageController do
     case Accounts.send_friend_request(user_id, friend_id) do
       {:ok, _} ->
         conn
-        |> put_flash(:info, "Friend request sent!")
+        |> put_flash(:info, "Đã gửi yêu cầu kết bạn!")
         |> redirect(to: "/dashboard")
 
       {:error, _} ->
         conn
-        |> put_flash(:error, "Failed to send request")
+        |> put_flash(:error, "Không thể gửi yêu cầu")
         |> redirect(to: "/dashboard")
     end
   end
@@ -117,12 +117,12 @@ defmodule Gchatdemo1Web.PageController do
     case Accounts.cancel_friend_request(user_id, friend_id) do
       {:ok, _} ->
         conn
-        |> put_flash(:info, "Request canceled")
+        |> put_flash(:info, "Đã hủy yêu cầu")
         |> redirect(to: "/dashboard")
 
       {:error, _} ->
         conn
-        |> put_flash(:error, "Failed to cancel")
+        |> put_flash(:error, "Không thể hủy")
         |> redirect(to: "/dashboard")
     end
   end
