@@ -27,8 +27,19 @@ import Uploaders from "./uploaders"
 
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
-let liveSocket = new LiveSocket("/live", Socket, { uploaders: Uploaders, params: { _csrf_token: csrfToken } })
-
+let liveSocket = new LiveSocket("/live", Socket, {
+    uploaders: Uploaders,
+    params: { _csrf_token: csrfToken },
+    dom: {
+      onNodeAdded(node) {
+        if (node.id === "video-call-container") {
+          const userId = document.querySelector("main").dataset.userId;
+          const conversationId = document.querySelector("main").dataset.conversationId;
+          configureWebRTC(userId, conversationId);
+        }
+      }
+    }
+  });
 // let liveSocket = new LiveSocket("/live", Socket, {
 //   longPollFallbackMs: 2500,
 //   params: {_csrf_token: csrfToken}

@@ -15,27 +15,23 @@ defmodule Gchatdemo1Web.GroupChatChannel do
     end
   end
 
-  def handle_in("new_message", %{"content" => content}, socket) do
+  def handle_in("new_message", %{"content" => content, "user_id" => sender_id}, socket) do
     IO.puts("🔥 Received new message")
-    user_id = socket.assigns.user_id
+
     group_id = socket.assigns.group_id
-    user_email = Accounts.get_user!(user_id).email
-
-    # Xác định sender
-    sender = if user_id == socket.assigns.user_id, do: "me", else: "other"
-
-    case Chat.send_message(user_id, group_id, content) do
+    user_email = Accounts.get_user!(sender_id).email  # Lấy email đúng của sender
+    avatar_url = Accounts.get_user!(sender_id).avatar_url
+    case Chat.send_message(sender_id, group_id, content) do  # Dùng sender_id để lưu tin nhắn
       {:ok, message} ->
         broadcast!(socket, "new_message", %{
           message: %{
-            # Thêm id vào trong message
+            user_id: message.user_id,
             id: message.id,
-            content: message.content
+            content: message.content,
           },
-          # Gửi "me" hoặc "other"
-          sender: sender,
-          # Gửi email cùng với tin nhắn
-          email: user_email
+          sender: "me", # Gán trước ở đây, chỉnh sửa sẽ ở phần channel.on
+          email: user_email,
+          avatar_url: avatar_url
         })
 
         {:reply, {:ok, %{status: "sent", message: message}}, socket}
@@ -44,6 +40,7 @@ defmodule Gchatdemo1Web.GroupChatChannel do
         {:reply, {:error, %{status: "failed", reason: inspect(reason)}}, socket}
     end
   end
+
 
   def handle_in("recall_message", %{"message_id" => message_id}, socket) do
     user_id = socket.assigns.user_id
@@ -96,6 +93,7 @@ defmodule Gchatdemo1Web.GroupChatChannel do
         {:reply, {:error, reason}, socket}
     end
   end
+
   def handle_in("add_reaction", %{"message_id" => message_id, "emoji" => emoji}, socket) do
     user_id = socket.assigns.user_id
 
@@ -113,7 +111,6 @@ defmodule Gchatdemo1Web.GroupChatChannel do
         {:reply, {:error, "Failed to add reaction"}, socket}
     end
   end
-
 
   def handle_in("remove_reaction", %{"message_id" => message_id, "emoji" => emoji}, socket) do
     user_id = socket.assigns.user_id

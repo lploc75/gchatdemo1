@@ -124,7 +124,7 @@ defmodule Gchatdemo1Web.MessageLive do
          replying_to: nil
        )}
     else
-      {:ok, redirect(socket, to: "/users/log_in")}
+      {:ok, redirect(socket, to: "/")}
     end
   end
 
@@ -191,42 +191,42 @@ defmodule Gchatdemo1Web.MessageLive do
     end
   end
 
-# Xử lý sự kiện chỉnh sửa tin nhắn
-def handle_event("edit_message", %{"message_id" => message_id, "content" => content}, socket) do
-  conversation_id = socket.assigns.conversation_id
+  # Xử lý sự kiện chỉnh sửa tin nhắn
+  def handle_event("edit_message", %{"message_id" => message_id, "content" => content}, socket) do
+    conversation_id = socket.assigns.conversation_id
 
-  case Messaging.edit_message(message_id, content) do
-    {:ok, edited_message} ->
-      # Cập nhật danh sách tin nhắn đã chỉnh sửa
-      updated_messages =
-        Enum.map(socket.assigns.messages, fn msg ->
-          if msg.id == edited_message.id, do: edited_message, else: msg
-        end)
+    case Messaging.edit_message(message_id, content) do
+      {:ok, edited_message} ->
+        # Cập nhật danh sách tin nhắn đã chỉnh sửa
+        updated_messages =
+          Enum.map(socket.assigns.messages, fn msg ->
+            if msg.id == edited_message.id, do: edited_message, else: msg
+          end)
 
-      # Kiểm tra nếu tin nhắn đã ghim bị chỉnh sửa thì cập nhật danh sách ghim
-      updated_pinned_messages =
-        if Enum.any?(socket.assigns.pinned_messages, &(&1.id == edited_message.id)) do
-          Messaging.list_pinned_messages(socket.assigns.conversation_id)
-        else
-          socket.assigns.pinned_messages
-        end
+        # Kiểm tra nếu tin nhắn đã ghim bị chỉnh sửa thì cập nhật danh sách ghim
+        updated_pinned_messages =
+          if Enum.any?(socket.assigns.pinned_messages, &(&1.id == edited_message.id)) do
+            Messaging.list_pinned_messages(socket.assigns.conversation_id)
+          else
+            socket.assigns.pinned_messages
+          end
 
-      # Phát sự kiện cập nhật tin nhắn
-      Gchatdemo1Web.Endpoint.broadcast!(
-        chat_topic(conversation_id),
-        "message_edited",
-        edited_message
-      )
+        # Phát sự kiện cập nhật tin nhắn
+        Gchatdemo1Web.Endpoint.broadcast!(
+          chat_topic(conversation_id),
+          "message_edited",
+          edited_message
+        )
 
-      {:noreply,
-       socket
-       |> assign(messages: updated_messages, pinned_messages: updated_pinned_messages)
-       |> put_flash(:info, "Tin nhắn đã được chỉnh sửa thành công")}
+        {:noreply,
+         socket
+         |> assign(messages: updated_messages, pinned_messages: updated_pinned_messages)
+         |> put_flash(:info, "Tin nhắn đã được chỉnh sửa thành công")}
 
-    {:error, _changeset} ->
-      {:noreply, put_flash(socket, :error, "Không thể chỉnh sửa tin nhắn")}
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Không thể chỉnh sửa tin nhắn")}
+    end
   end
-end
 
   # Thêm xử lý sự kiện xóa tin nhắn
   def handle_event("delete_message", %{"message_id" => message_id}, socket) do
@@ -447,6 +447,7 @@ end
         {:noreply, put_flash(socket, :error, "Lỗi khi gỡ ghim tin nhắn")}
     end
   end
+
   def handle_event("start_reply", %{"message_id" => message_id}, socket) do
     reply_to = Messaging.get_message(message_id)
     {:noreply, assign(socket, replying_to: reply_to)}
@@ -455,6 +456,7 @@ end
   def handle_event("cancel_reply", _, socket) do
     {:noreply, assign(socket, replying_to: nil)}
   end
+
   # Xử lý sự kiện tin nhắn đã được nhận
   def handle_info(%{event: "message_delivered", payload: %{message_id: message_id}}, socket) do
     current_user_id = socket.assigns.current_user.id
@@ -499,100 +501,100 @@ end
      )}
   end
 
-# Xử lý sự kiện tin nhắn đã được xem
-def handle_info(
-  %{
-    event: "messages_seen",
-    payload: %{reader_id: reader_id, conversation_id: conversation_id}
-  },
-  socket
-) do
-# Chỉ xử lý nếu conversation khớp và reader là người nhận (friend của current user)
-if conversation_id == socket.assigns.conversation_id && reader_id == socket.assigns.friend.id do
-updated_messages =
-  socket.assigns.messages
-  |> Enum.map(fn msg ->
-    # Cập nhật trạng thái "seen" cho tin nhắn của current user
-    if msg.user_id == socket.assigns.current_user.id do
-      %{msg | status: "seen"}
-    else
-      msg
-    end
-  end)
-
-{:noreply, assign(socket, messages: updated_messages)}
-else
-{:noreply, socket}
-end
-end
-
-# Xử lý sự kiện đánh dấu tin nhắn là "đã xem" khi người dùng mở chat
-def handle_info(:mark_messages_as_seen, socket) do
-current_user_id = socket.assigns.current_user.id
-conversation_id = socket.assigns.conversation_id
-
-if socket.assigns.friend do
-# Chỉ mark seen cho tin nhắn của friend (người gửi)
-{count, _} =
-  Messaging.mark_messages_as_seen(
-    conversation_id,
-    socket.assigns.friend.id
-  )
-
-if count > 0 do
-  Gchatdemo1Web.Endpoint.broadcast!(
-    chat_topic(conversation_id),
-    "messages_seen",
-    %{
-      conversation_id: conversation_id,
-      reader_id: current_user_id
-    }
-  )
-end
-end
-
-{:noreply, socket}
-end
-
-def handle_info(%{event: "new_message", payload: %{message: new_message}}, socket) do
-  if new_message.conversation_id == socket.assigns.conversation_id do
-    # Nếu tin nhắn có reply_to_id, load thêm thông tin của tin nhắn gốc
-    updated_message =
-      if new_message.reply_to_id do
-        %{new_message | reply_to: Messaging.get_message(new_message.reply_to_id)}
-      else
-        new_message
-      end
-
-    updated_messages =
-      socket.assigns.messages
-      |> Enum.reject(&(&1.id == updated_message.id))
-      |> Kernel.++([updated_message])
-
-    current_user_id = socket.assigns.current_user.id
-    friend_id = socket.assigns.friend.id
-
-    # Nếu tin nhắn được gửi từ bạn bè, đánh dấu là "seen" và broadcast event
-    if new_message.user_id == friend_id do
-      case Messaging.mark_messages_as_seen(new_message.conversation_id, current_user_id) do
-        {count, _} -> {:ok, count}
-      end
-
-      Gchatdemo1Web.Endpoint.broadcast!(
-        chat_topic(new_message.conversation_id),
-        "messages_seen",
+  # Xử lý sự kiện tin nhắn đã được xem
+  def handle_info(
         %{
-          conversation_id: new_message.conversation_id,
-          reader_id: current_user_id
-        }
-      )
+          event: "messages_seen",
+          payload: %{reader_id: reader_id, conversation_id: conversation_id}
+        },
+        socket
+      ) do
+    # Chỉ xử lý nếu conversation khớp và reader là người nhận (friend của current user)
+    if conversation_id == socket.assigns.conversation_id && reader_id == socket.assigns.friend.id do
+      updated_messages =
+        socket.assigns.messages
+        |> Enum.map(fn msg ->
+          # Cập nhật trạng thái "seen" cho tin nhắn của current user
+          if msg.user_id == socket.assigns.current_user.id do
+            %{msg | status: "seen"}
+          else
+            msg
+          end
+        end)
+
+      {:noreply, assign(socket, messages: updated_messages)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Xử lý sự kiện đánh dấu tin nhắn là "đã xem" khi người dùng mở chat
+  def handle_info(:mark_messages_as_seen, socket) do
+    current_user_id = socket.assigns.current_user.id
+    conversation_id = socket.assigns.conversation_id
+
+    if socket.assigns.friend do
+      # Chỉ mark seen cho tin nhắn của friend (người gửi)
+      {count, _} =
+        Messaging.mark_messages_as_seen(
+          conversation_id,
+          socket.assigns.friend.id
+        )
+
+      if count > 0 do
+        Gchatdemo1Web.Endpoint.broadcast!(
+          chat_topic(conversation_id),
+          "messages_seen",
+          %{
+            conversation_id: conversation_id,
+            reader_id: current_user_id
+          }
+        )
+      end
     end
 
-    {:noreply, assign(socket, messages: updated_messages)}
-  else
     {:noreply, socket}
   end
-end
+
+  def handle_info(%{event: "new_message", payload: %{message: new_message}}, socket) do
+    if new_message.conversation_id == socket.assigns.conversation_id do
+      # Nếu tin nhắn có reply_to_id, load thêm thông tin của tin nhắn gốc
+      updated_message =
+        if new_message.reply_to_id do
+          %{new_message | reply_to: Messaging.get_message(new_message.reply_to_id)}
+        else
+          new_message
+        end
+
+      updated_messages =
+        socket.assigns.messages
+        |> Enum.reject(&(&1.id == updated_message.id))
+        |> Kernel.++([updated_message])
+
+      current_user_id = socket.assigns.current_user.id
+      friend_id = socket.assigns.friend.id
+
+      # Nếu tin nhắn được gửi từ bạn bè, đánh dấu là "seen" và broadcast event
+      if new_message.user_id == friend_id do
+        case Messaging.mark_messages_as_seen(new_message.conversation_id, current_user_id) do
+          {count, _} -> {:ok, count}
+        end
+
+        Gchatdemo1Web.Endpoint.broadcast!(
+          chat_topic(new_message.conversation_id),
+          "messages_seen",
+          %{
+            conversation_id: new_message.conversation_id,
+            reader_id: current_user_id
+          }
+        )
+      end
+
+      {:noreply, assign(socket, messages: updated_messages)}
+    else
+      {:noreply, socket}
+    end
+  end
 
   # Xử lý broadcast event "message_edited"
   def handle_info(%{event: "message_edited", payload: edited_message}, socket) do
@@ -702,6 +704,13 @@ end
     end) do %>
           <% message_class =
             if message.user_id == @current_user.id, do: "message-right", else: "message-left" %>
+          <!-- Nếu tin nhắn đến từ người khác, hiển thị avatar -->
+          <%= if message.user_id != @current_user.id and message.user.avatar_url do %>
+            <div class="message-avatar-container">
+              <img src={message.user.avatar_url} alt="avatar" class="message-avatar" />
+            </div>
+          <% end %>
+
           <div class="message-container" id={"message-#{message.id}"}>
             <!-- Menu "..." bên trái tin nhắn (chỉ cho tin nhắn của người gửi) -->
             <%= if message.user_id == @current_user.id do %>
@@ -1063,5 +1072,4 @@ end
       text
     end
   end
-
 end

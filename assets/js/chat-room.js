@@ -340,6 +340,7 @@ export class ChatRoom extends LitElement {
         // console.log(`🧐 Tin nhắn ID: ${msg.id}, user_id: ${msg.user_id}, this.userId: ${this.userId},`);
         return {
           id: msg.id,  // Thêm ID để nhận diện tin nhắn khi thu hồi
+          user_id: msg.user_id,
           content: msg.content,
           sender: msg.user_id === this.userId ? "me" : "other",
           email: msg.user_email, // Lấy email từ API
@@ -380,17 +381,23 @@ export class ChatRoom extends LitElement {
       // Lắng nghe tin nhắn mới từ kênh
       this.channel.on("new_message", (payload) => {
         console.log("📩 Nhận tin nhắn mới:", payload);
-
+        
         // Kiểm tra xem payload.message có tồn tại và có chứa thuộc tính content không
         if (payload.message && payload.message.content) {
           const newMessage = {
             id: payload.message.id,
+            user_id: payload.message.user_id,
             content: payload.message.content,
             sender: payload.sender,
             email: payload.email, // Email từ payload của WebSocket
+            avatar_url: payload.avatar_url,
           };
           // Thêm tin nhắn mới vào danh sách tin nhắn hiện tại
+          newMessage.sender = (payload.message.user_id === this.userId) ? "me" : "other";
           this.messages = [...this.messages, newMessage];
+          console.log(this.messages)
+          console.log(newMessage)
+
         } else {
           console.error("❌ Tin nhắn không hợp lệ:", payload.message);
           console.error("❌ Tin nhắn không hợp lệ:", payload.email);
@@ -494,7 +501,7 @@ export class ChatRoom extends LitElement {
       // Giả sử bạn có email của người dùng trong biến this.userEmail
       const message = {
         content: input.value.trim(),
-        // sender: "me",  // Gán sender là "me" cho tin nhắn của bạn
+        user_id: this.userId, 
       };
 
       this.channel.push("new_message", message)
@@ -845,6 +852,7 @@ export class ChatRoom extends LitElement {
       console.error("❌ Lỗi khi xóa thành viên:", error);
     }
   }
+
   // Gọi tìm kiếm tin nhắn sau khi chọn người gửi
   onMemberSelect(event) {
     this.selectedFindUserId = event.target.value;
@@ -1086,22 +1094,30 @@ export class ChatRoom extends LitElement {
                      ${this.messages.map((msg) => html`
         <div class="message-container ${msg.sender === 'me' ? 'me' : 'other'}">
           ${msg.sender !== 'me' ? html`<img class="avatar" src="${msg.avatar_url}" alt="Avatar">` : ''}
-          <div class="message ${msg.sender}">
+          <div class="message ${msg.sender}"      
+          @contextmenu="${(e) => this.showContextMenu(e, msg.id)}">
             <div class="email">${msg.email}</div>
-            <div class="content">
-              ${msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>`
-        : msg.is_edited ? html`
-                <span class="edited-text" @click="${() => this.toggleEditHistory(msg.id)}">
-                  ${msg.content} <span class="edited-label">(Đã chỉnh sửa)</span>
-                </span>
-                ${this.showEditHistoryId === msg.id ? html`
-                  <div class="edit-history">
-                    ${this.editHistory[msg.id]?.map(edit => html`
-                      <div class="edit-item">${edit.previous_content}</div>
-                    `) ?? ''}
-                  </div>
-                ` : ''}
-              ` : msg.content}
+
+          <div class="content">
+                   ${this.editingMessageId === msg.id ? html`
+                       <input type="text" .value="${this.editingMessageContent}"
+                         @input="${(e) => this.editingMessageContent = e.target.value}" />
+                       <button @click="${() => this.saveEditedMessage(msg.id)}">Lưu</button>
+                       <button @click="${() => this.cancelEditing()}">Hủy</button>`
+         : msg.is_edited ? html`
+                         <span class="edited-text" @click="${() => this.toggleEditHistory(msg.id)}">
+                           ${msg.content} <span class="edited-label">(Đã chỉnh sửa)</span>
+                         </span>
+                         ${this.showEditHistoryId === msg.id ? html`
+                           <div class="edit-history">
+                             ${this.editHistory[msg.id]?.map(edit => html`
+                               <div class="edit-item">${edit.previous_content}</div>
+                             `) ?? ''}
+                           </div>
+                         ` : ''}
+                       `
+           : (msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>` : msg.content)
+       }
             </div>
             
             ${Array.isArray(msg.reaction) && msg.reaction.length > 0 && msg.reaction.some(r => r.emoji !== "unknown")
@@ -1110,7 +1126,7 @@ export class ChatRoom extends LitElement {
                       ${msg.reaction
             .filter(r => r.emoji !== "unknown") // Lọc bỏ những reaction có giá trị "unknown"
             .map(r => html`
-                          <span class="emoji">${r.emoji} <small>x${r.count}</small></span>
+                          <span class="emoji">${r.emoji} <small>${r.count}</small></span>
                         `)}
                     </div>
                   `
