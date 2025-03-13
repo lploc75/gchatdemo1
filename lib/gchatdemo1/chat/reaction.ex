@@ -14,6 +14,6 @@ defmodule Gchatdemo1.Chat.Reaction do
     reaction
     |> cast(attrs, [:user_id, :message_id, :emoji])
     |> validate_required([:user_id, :message_id, :emoji])
-    |> unique_constraint([:user_id, :message_id]) # Đảm bảo mỗi user chỉ có 1 reaction cho 1 message
+    |> unique_constraint([:user_id, :message_id, :emoji]) # Đảm bảo mỗi user chỉ có 1 reaction cho 1 message
   end
 end

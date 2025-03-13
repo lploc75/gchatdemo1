@@ -96,12 +96,10 @@ defmodule Gchatdemo1Web.GroupChatChannel do
         {:reply, {:error, reason}, socket}
     end
   end
-
   def handle_in("add_reaction", %{"message_id" => message_id, "emoji" => emoji}, socket) do
     user_id = socket.assigns.user_id
-    IO.puts("👍 User #{user_id} thêm reaction cho tin nhắn #{message_id}")
 
-    case Chat.create_or_update_reaction(user_id, message_id, emoji) do
+    case Chat.create_reaction(user_id, message_id, emoji) do
       {:ok, _reaction} ->
         broadcast!(socket, "reaction_added", %{
           message_id: message_id,
@@ -116,13 +114,13 @@ defmodule Gchatdemo1Web.GroupChatChannel do
     end
   end
 
-  def handle_in("remove_reaction", %{"message_id" => message_id}, socket) do
+
+  def handle_in("remove_reaction", %{"message_id" => message_id, "emoji" => emoji}, socket) do
     user_id = socket.assigns.user_id
 
-    case Chat.remove_reaction(message_id, user_id) do
+    case Chat.remove_reaction(message_id, user_id, emoji) do
       {:ok, _} ->
-        broadcast!(socket, "reaction_removed", %{"message_id" => message_id, "user_id" => user_id})
-
+        broadcast!(socket, "reaction_removed", %{"message_id" => message_id, "user_id" => user_id, "emoji" => emoji})
         {:noreply, socket}
 
       {:error, reason} ->

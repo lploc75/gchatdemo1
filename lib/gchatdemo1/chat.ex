@@ -18,19 +18,59 @@ defmodule Gchatdemo1.Chat do
 
   @doc "Lấy danh sách tin nhắn của một nhóm chat kèm emoji reactions"
   # cần lấy thêm is_recalled để hiển thị tin nhắn đã thu hồi
+  # def list_messages(conversation_id, user_id) do
+  #   from(m in Message,
+  #     # Join với users
+  #     join: u in assoc(m, :user),
+  #     # Join với reactions
+  #     left_join: r in Reaction,
+  #     on: r.message_id == m.id,
+  #     where: m.conversation_id == ^conversation_id,
+  #     # Bỏ qua tin nhắn bị xóa của user_id
+  #     where: m.is_deleted == false or m.user_id != ^user_id,
+  #     order_by: [asc: m.inserted_at],
+  #     # Nhóm theo tin nhắn
+  #     group_by: [m.id, u.email, u.avatar_url, r.emoji],
+  #     select: %{
+  #       id: m.id,
+  #       user_id: m.user_id,
+  #       content: m.content,
+  #       inserted_at: m.inserted_at,
+  #       is_recalled: m.is_recalled,
+  #       is_edited: m.is_edited,
+  #       user_email: u.email,
+  #       avatar_url: u.avatar_url,
+  #       # Chỉ lấy 1 emoji
+  #       reaction: r.emoji
+  #     }
+  #   )
+  #   |> Repo.all()
+  # end
   def list_messages(conversation_id, user_id) do
+    reactions_query =
+      from(r in Reaction,
+        where: r.message_id in subquery(
+          from(m in Message,
+            where: m.conversation_id == ^conversation_id,
+            select: m.id
+          )
+        ),
+        group_by: [r.message_id, r.emoji],
+        select: %{
+          message_id: r.message_id,
+          emoji: coalesce(r.emoji, "unknown"),
+          count: count(r.emoji)
+        }
+      )
+
     from(m in Message,
-      # Join với users
       join: u in assoc(m, :user),
-      # Join với reactions
-      left_join: r in Reaction,
+      left_join: r in subquery(reactions_query),
       on: r.message_id == m.id,
       where: m.conversation_id == ^conversation_id,
-      # Bỏ qua tin nhắn bị xóa của user_id
       where: m.is_deleted == false or m.user_id != ^user_id,
       order_by: [asc: m.inserted_at],
-      # Nhóm theo tin nhắn
-      group_by: [m.id, u.email, u.avatar_url, r.emoji],
+      group_by: [m.id, u.email, u.avatar_url],
       select: %{
         id: m.id,
         user_id: m.user_id,
@@ -40,12 +80,16 @@ defmodule Gchatdemo1.Chat do
         is_edited: m.is_edited,
         user_email: u.email,
         avatar_url: u.avatar_url,
-        # Chỉ lấy 1 emoji
-        reaction: r.emoji
+        reactions: fragment(
+          "COALESCE(jsonb_object_agg(COALESCE(?, 'unknown'), ?), '{}')",
+          r.emoji,
+          r.count
+        )
       }
     )
     |> Repo.all()
   end
+
 
   @doc "Xóa tin nhắn (chỉ user gửi tin nhắn mới có quyền xóa)"
   def delete_message(message_id, user_id) do
@@ -61,38 +105,36 @@ defmodule Gchatdemo1.Chat do
   end
 
   @doc "Tạo hoặc cập nhật reaction (emoji)"
-  def create_or_update_reaction(user_id, message_id, emoji) do
-    reaction_query =
-      from(r in Reaction, where: r.user_id == ^user_id and r.message_id == ^message_id)
 
-    case Repo.one(reaction_query) do
-      nil ->
-        IO.puts("✅ Thêm reaction mới")
+  def create_reaction(user_id, message_id, emoji) do
+    IO.puts("✅ Đang thêm reaction mới: user #{user_id} | message #{message_id} | emoji #{emoji}")
 
-        %Reaction{}
-        |> Reaction.changeset(%{user_id: user_id, message_id: message_id, emoji: emoji})
-        |> Repo.insert()
+    %Reaction{}
+    |> Reaction.changeset(%{user_id: user_id, message_id: message_id, emoji: emoji})
+    |> Repo.insert()
+    |> case do
+      {:ok, reaction} ->
+        IO.puts("🎉 Thêm reaction thành công!")
+        {:ok, reaction}
 
-      reaction ->
-        IO.puts("🔄 Cập nhật emoji mới cho reaction")
-
-        reaction
-        |> Reaction.changeset(%{emoji: emoji})
-        |> Repo.update()
+      {:error, changeset} ->
+        IO.puts("❌ Lỗi khi thêm reaction:")
+        IO.inspect(changeset.errors)
+        {:error, changeset}
     end
   end
 
   @doc "Xóa reaction"
-  def remove_reaction(message_id, user_id) do
-    IO.inspect({user_id, message_id}, label: "🔍 Checking remove_reaction")
+  def remove_reaction(message_id, user_id, emoji) do
+    IO.inspect({user_id, message_id, emoji}, label: "🔍 Checking remove_reaction")
 
-    case Repo.get_by(Reaction, message_id: message_id, user_id: user_id) do
+    case Repo.get_by(Reaction, message_id: message_id, user_id: user_id, emoji: emoji) do
       nil ->
-        IO.inspect("Reaction not found for message_id: #{message_id} and user_id: #{user_id}")
+        IO.inspect("Reaction not found for message_id: #{message_id}, user_id: #{user_id}, emoji: #{emoji}")
         {:error, "Reaction not found"}
 
       reaction ->
-        IO.inspect("Found reaction, deleting...")
+        IO.inspect("Found reaction, deleting emoji: #{emoji}...")
         Repo.delete(reaction)
     end
   end

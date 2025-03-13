@@ -11,6 +11,6 @@ defmodule Gchatdemo1.Repo.Migrations.CreateReactions do
       end
 
       # Đảm bảo mỗi user chỉ có thể react 1 emoji duy nhất trên 1 tin nhắn
-      create unique_index(:reactions, [:user_id, :message_id])
+      create unique_index(:reactions, [:user_id, :message_id, :emoji])
   end
 end

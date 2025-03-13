@@ -229,7 +229,10 @@ export class ChatRoom extends LitElement {
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   font-size: 0.8em;
 }
-
+.emoji small {
+  font-size: 12px;
+  color: gray;
+}
 .message.has-reaction {
   margin-bottom: 15px; /* Tăng khoảng cách giữa các tin nhắn có emoji */
 }
@@ -341,15 +344,18 @@ export class ChatRoom extends LitElement {
           sender: msg.user_id === this.userId ? "me" : "other",
           email: msg.user_email, // Lấy email từ API
           avatar_url: msg.avatar_url,
-          reaction: msg.reaction, // Lấy emoji từ API
+          reaction: msg.reactions
+            ? Object.entries(msg.reactions).map(([emoji, count]) => ({ emoji, count }))
+            : [], // ✅ Format reactions thành mảng [{ emoji, count }]
           is_recalled: msg.is_recalled, // Tin nhắn bị thu hồi
           is_edited: msg.is_edited, // Tin nhắn đã sửa
         };
       });
       console.log("✅ Tin nhắn sau khi format:", this.messages);
-    // 🔹 Gọi hàm loadMembers để tải danh sách thành viên
-    await this.loadMembers(group.conversation.id);
-    console.log("👥 SELECTED GROUP:", this.selectedGroup);
+
+      // 🔹 Gọi hàm loadMembers để tải danh sách thành viên
+      await this.loadMembers(group.conversation.id);
+      console.log("👥 SELECTED GROUP:", this.selectedGroup);
     } catch (error) {
       console.error("❌ Lỗi khi tải tin nhắn:", error);
       this.messages = []; // Nếu lỗi, giữ giá trị là mảng rỗng
@@ -408,31 +414,46 @@ export class ChatRoom extends LitElement {
         console.log("Tin nhắn bị xóa:", payload);
         this.messages = this.messages.filter(msg => msg.id !== payload.message_id);
       });
-      // Thả emoji vào tin nhắn
+      // Nhận phản ứng emoji từ WebSocket
       this.channel.on("reaction_added", (payload) => {
         console.log("💬 Nhận phản ứng emoji:", payload);
 
         this.messages = this.messages.map(msg => {
-          if (msg.id === payload.message_id) {
-            return {
-              ...msg,
-              reaction: payload.emoji // lưu emoji
-            };
+          if (msg.id !== payload.message_id) return msg;
+
+          const reactions = Array.isArray(msg.reaction) ? [...msg.reaction] : [];
+          const existingReaction = reactions.find(r => r.emoji === payload.emoji);
+
+          if (existingReaction) {
+            existingReaction.count += 1; // Tăng số lượng emoji
+          } else {
+            reactions.push({ emoji: payload.emoji, count: 1 }); // Thêm emoji mới
           }
-          return msg;
+
+          return { ...msg, reaction: reactions };
         });
+
+        this.requestUpdate(); // Cập nhật giao diện
       });
-      // Xóa emoji khỏi tin nhắn
+
+      // Xóa emoji khỏi tin nhắn từ WebSocket
       this.channel.on("reaction_removed", (payload) => {
         console.log("💬 Emoji bị xóa khỏi tin nhắn:", payload);
 
         this.messages = this.messages.map(msg => {
-          if (msg.id === payload.message_id) {
-            return { ...msg, reaction: null }; // Xóa emoji khỏi tin nhắn
-          }
-          return msg;
+          if (msg.id !== payload.message_id) return msg;
+
+          const reactions = Array.isArray(msg.reaction) ? [...msg.reaction] : [];
+          const updatedReactions = reactions
+            .map(r => r.emoji === payload.emoji ? { ...r, count: r.count - 1 } : r)
+            .filter(r => r.count > 0); // Xóa emoji nếu count = 0
+
+          return { ...msg, reaction: updatedReactions };
         });
+
+        this.requestUpdate(); // Cập nhật giao diện
       });
+
       this.channel.on("message_edited", (payload) => {
         this.messages = this.messages.map(msg => {
           if (msg.id === payload.message_id) {
@@ -569,33 +590,31 @@ export class ChatRoom extends LitElement {
     console.log(`📢 Thả hoặc bỏ emoji: ${emoji} vào tin nhắn ${messageId}`);
 
     const message = this.messages.find(msg => msg.id === messageId);
+    if (!message) return;
+
+    if (!Array.isArray(message.reaction)) {
+      message.reaction = [];
+    }
+
+    const existingReaction = message.reaction.find(r => r.emoji === emoji);
 
     if (this.channel) {
-      if (message.reaction === emoji) {
-        // Nếu emoji đã tồn tại, thì gửi sự kiện xóa reaction
-        this.channel.push("remove_reaction", { message_id: messageId })
-          .receive("ok", () => {
-            console.log(`✅ Đã xóa emoji ${emoji}`);
-          })
-          .receive("error", (err) => {
-            if (err === "Reaction not found") {
-              console.error("❌ Reaction not found");
-            } else {
-              console.error("❌ Lỗi khi xóa emoji:", err);
-            }
-          });
+      if (existingReaction) {
+        console.log(`🚀 Gửi yêu cầu xóa emoji ${emoji} từ message ${messageId}`);
+
+        // Nếu đã có emoji -> Gửi sự kiện xóa reaction
+        this.channel.push("remove_reaction", { message_id: messageId, emoji })
+          .receive("ok", () => console.log(`✅ Đã gửi yêu cầu xóa emoji ${emoji}`))
+          .receive("error", (err) => console.error("❌ Lỗi khi xóa emoji:", err));
       } else {
-        // Nếu chưa có emoji, gửi sự kiện thêm reaction
-        this.channel.push("add_reaction", { emoji, message_id: messageId })
-          .receive("ok", () => {
-            console.log(`✅ Đã gửi emoji ${emoji}`);
-          })
-          .receive("error", (err) => {
-            console.error("❌ Lỗi khi thả emoji:", err);
-          });
+        // Nếu chưa có emoji -> Gửi sự kiện thêm reaction
+        this.channel.push("add_reaction", { message_id: messageId, emoji })
+          .receive("ok", () => console.log(`✅ Đã gửi yêu cầu thêm emoji ${emoji}`))
+          .receive("error", (err) => console.error("❌ Lỗi khi thả emoji:", err));
       }
     }
   }
+
 
   // Phương thức lấy danh sách bạn bè từ API
   async loadFriends() {
@@ -832,7 +851,7 @@ export class ChatRoom extends LitElement {
     console.log("👤 Đã chọn user_id:", this.selectedFindUserId);
     this.searchMessages(); // Gọi lại tìm kiếm ngay khi chọn user
   }
-  
+
   // Tìm kiếm tin nhắn
   async searchMessages() {
     const content = this.searchQuery.trim();
@@ -882,7 +901,7 @@ export class ChatRoom extends LitElement {
     try {
       const res = await fetch(`/api/groups/${this.selectedGroup.conversation.id}/members`);
       const data = await res.json();
-  
+
       if (data.status === "ok") {
         this.selectedGroup.members = data.members; // Gán danh sách thành viên vào nhóm đã chọn
         // console.log("👥 Thành viên của nhóm:", this.selectedGroup.members);
@@ -898,7 +917,7 @@ export class ChatRoom extends LitElement {
   async confirmShare() {
     const conversationId = this.shadowRoot.getElementById("conversationSelect").value;
     if (!conversationId || !this.selectedMessageId) return;
-  
+
     const response = await fetch("/api/messages/forward", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -955,7 +974,7 @@ export class ChatRoom extends LitElement {
     } catch (error) {
       console.error("❌ Lỗi khi tải danh sách thành viên:", error);
     }
-    
+
     this.showEditGroupModal = true;
     this.requestUpdate();
   }
@@ -985,7 +1004,7 @@ export class ChatRoom extends LitElement {
     this.contextMenuVisible = false; // Đóng context menu
     this.requestUpdate();
   }
-  
+
   // Đóng modal
   closeCreateGroupModal() {
     this.showCreateGroupModal = false;
@@ -1070,8 +1089,8 @@ export class ChatRoom extends LitElement {
           <div class="message ${msg.sender}">
             <div class="email">${msg.email}</div>
             <div class="content">
-              ${msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>` 
-              : msg.is_edited ? html`
+              ${msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>`
+        : msg.is_edited ? html`
                 <span class="edited-text" @click="${() => this.toggleEditHistory(msg.id)}">
                   ${msg.content} <span class="edited-label">(Đã chỉnh sửa)</span>
                 </span>
@@ -1084,22 +1103,31 @@ export class ChatRoom extends LitElement {
                 ` : ''}
               ` : msg.content}
             </div>
-                        ${msg.reaction ? html`<div class="reaction">${msg.reaction}</div>` : ""}  
+            
+            ${Array.isArray(msg.reaction) && msg.reaction.length > 0 && msg.reaction.some(r => r.emoji !== "unknown")
+        ? html`
+                    <div class="reaction">
+                      ${msg.reaction
+            .filter(r => r.emoji !== "unknown") // Lọc bỏ những reaction có giá trị "unknown"
+            .map(r => html`
+                          <span class="emoji">${r.emoji} <small>x${r.count}</small></span>
+                        `)}
+                    </div>
+                  `
+        : ""}
 
-                        <!-- Nút thả emoji ẩn, hiện khi hover -->
-                        ${!msg.is_recalled ? html`
-                          <div class="emoji-picker">
-                            ${["😍", "😂", "👍", "❤️"].map((emoji) => html`
-                              <button @click="${() => this.reactToMessage(msg.id, emoji)}">
-                                ${emoji}
-                              </button>
-                            `)}
-                          </div>
-                        ` : ""}
-                      </div>
+                <!-- Nút thả emoji ẩn, hiện khi hover -->
+                ${!msg.is_recalled ? html`
+                  <div class="emoji-picker">
+                   ${["😍", "😂", "👍", "❤️"].map((emoji) => html`
+                     <button @click="${() => this.reactToMessage(msg.id, emoji)}">${emoji}</button>
+                      `)}
+                    </div>
+                      ` : ""}
+                    </div>
                     `)}
-                    `}
-                </div>
+                  `}
+              </div>
 
                 <form @submit="${this.sendMessage}" class="message-input"
                   ?hidden="${this.selectedGroup?.conversation.only_admin_can_message &&
