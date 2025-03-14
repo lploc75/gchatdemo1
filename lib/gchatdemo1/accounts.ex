@@ -527,18 +527,23 @@ defmodule Gchatdemo1.Accounts do
     user = Repo.get(User, user_id)
 
     if user do
-      now = DateTime.utc_now()
-      last_seen = user.last_active_at || DateTime.from_unix!(0)
-      diff = DateTime.diff(now, last_seen, :minute)
+      case user.last_active_at do
+        nil ->
+          "Không hoạt động"
 
-      cond do
-        diff < 5 -> "Đang hoạt động"
-        diff < 60 -> "Hoạt động #{diff} phút trước"
-        diff < 1440 -> "Hoạt động #{div(diff, 60)} giờ trước"
-        true -> "Hoạt động #{div(diff, 1440)} ngày trước"
+        last_seen ->
+          now = DateTime.utc_now()
+          diff = DateTime.diff(now, last_seen, :minute)
+
+          cond do
+            diff < 5 -> "Đang hoạt động"
+            diff < 60 -> "Hoạt động #{diff} phút trước"
+            diff < 1440 -> "Hoạt động #{div(diff, 60)} giờ trước"
+            true -> "Hoạt động #{div(diff, 1440)} ngày trước"
+          end
       end
     else
-      "Không rõ"
+      "Không hoạt động"
     end
   end
 

@@ -46,24 +46,28 @@ defmodule Gchatdemo1.Chat do
   #   )
   #   |> Repo.all()
   # end
+
+  # "Lấy danh sách tin nhắn của một nhóm chat và emoji reactions kèm email và avatar của user"
   def list_messages(conversation_id, user_id) do
+    # Subquery: Lấy các phản ứng (reactions) của những tin nhắn thuộc cuộc trò chuyện có conversation_id
     reactions_query =
       from(r in Reaction,
-        where: r.message_id in subquery(
-          from(m in Message,
-            where: m.conversation_id == ^conversation_id,
-            select: m.id
-          )
-        ),
+        where:
+          r.message_id in subquery(
+            from(m in Message,
+              where: m.conversation_id == ^conversation_id,
+              select: m.id
+            )
+          ),
         group_by: [r.message_id, r.emoji],
         select: %{
           message_id: r.message_id,
           emoji: coalesce(r.emoji, "unknown"),
-          count: count(r.emoji)
+          count: count(r.emoji),
+          user_ids: fragment("jsonb_agg(?)", r.user_id)  # 👈 Thêm danh sách user_id vào JSON
         }
       )
-
-    from(m in Message,
+      from(m in Message,
       join: u in assoc(m, :user),
       left_join: r in subquery(reactions_query),
       on: r.message_id == m.id,
@@ -80,16 +84,17 @@ defmodule Gchatdemo1.Chat do
         is_edited: m.is_edited,
         user_email: u.email,
         avatar_url: u.avatar_url,
-        reactions: fragment(
-          "COALESCE(jsonb_object_agg(COALESCE(?, 'unknown'), ?), '{}')",
-          r.emoji,
-          r.count
-        )
+        reactions:
+          fragment(
+            "COALESCE(jsonb_object_agg(COALESCE(?, 'unknown'), jsonb_build_object('count', ?, 'users', COALESCE(?, '[]'::jsonb))), '{}')",
+            r.emoji,
+            r.count,
+            r.user_ids
+          )
       }
     )
     |> Repo.all()
   end
-
 
   @doc "Xóa tin nhắn (chỉ user gửi tin nhắn mới có quyền xóa)"
   def delete_message(message_id, user_id) do
@@ -130,7 +135,10 @@ defmodule Gchatdemo1.Chat do
 
     case Repo.get_by(Reaction, message_id: message_id, user_id: user_id, emoji: emoji) do
       nil ->
-        IO.inspect("Reaction not found for message_id: #{message_id}, user_id: #{user_id}, emoji: #{emoji}")
+        IO.inspect(
+          "Reaction not found for message_id: #{message_id}, user_id: #{user_id}, emoji: #{emoji}"
+        )
+
         {:error, "Reaction not found"}
 
       reaction ->
@@ -405,32 +413,36 @@ defmodule Gchatdemo1.Chat do
     params = %{
       content: original_message.content,
       message_type: original_message.message_type,
-      user_id: user_id,  # Người gửi mới
+      # Người gửi mới
+      user_id: user_id,
       conversation_id: conversation_id,
       is_forwarded: true,
-      original_sender_id: original_message.user_id  # Lưu ID người gửi gốc
+      # Lưu ID người gửi gốc
+      original_sender_id: original_message.user_id
     }
 
     %Message{}
     |> Message.changeset(params)
     |> Repo.insert()
   end
+
   @doc """
   Tìm kiếm tin nhắn
   """
- def search_messages(params) do
-  query =
-    from m in Message,
-      join: u in User, on: m.user_id == u.id,
-      where: m.is_deleted == false and m.is_recalled == false,
-      select: %{id: m.id, content: m.content, user_id: m.user_id, email: u.email}
+  def search_messages(params) do
+    query =
+      from m in Message,
+        join: u in User,
+        on: m.user_id == u.id,
+        where: m.is_deleted == false and m.is_recalled == false,
+        select: %{id: m.id, content: m.content, user_id: m.user_id, email: u.email}
 
-  query =
-    if params["conversation_id"] do
-      where(query, [m, _u], m.conversation_id == ^params["conversation_id"])
-    else
-      query
-    end
+    query =
+      if params["conversation_id"] do
+        where(query, [m, _u], m.conversation_id == ^params["conversation_id"])
+      else
+        query
+      end
 
     query =
       if params["content"] do
@@ -465,7 +477,8 @@ defmodule Gchatdemo1.Chat do
     #   end
 
     query
-    |> order_by([m], desc: m.inserted_at) # Hiển thị tin nhắn mới nhất trước
+    # Hiển thị tin nhắn mới nhất trước
+    |> order_by([m], desc: m.inserted_at)
     |> Repo.all()
   end
 

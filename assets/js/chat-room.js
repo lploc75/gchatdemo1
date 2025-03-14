@@ -346,15 +346,19 @@ export class ChatRoom extends LitElement {
           email: msg.user_email, // Lấy email từ API
           avatar_url: msg.avatar_url,
           reaction: msg.reactions
-            ? Object.entries(msg.reactions).map(([emoji, count]) => ({ emoji, count }))
-            : [], // ✅ Format reactions thành mảng [{ emoji, count }]
+          ? Object.entries(msg.reactions).map(([emoji, reactionData]) => ({
+              emoji,
+              count: reactionData.count,
+              users: reactionData.users || [] // ✅ Lấy danh sách `user_id` của người thả reaction
+            }))
+          : [], // ✅ Format reactions thành mảng [{ emoji, count, users }]
           is_recalled: msg.is_recalled, // Tin nhắn bị thu hồi
           is_edited: msg.is_edited, // Tin nhắn đã sửa
         };
       });
       console.log("✅ Tin nhắn sau khi format:", this.messages);
 
-      // 🔹 Gọi hàm loadMembers để tải danh sách thành viên
+      //  Gọi hàm loadMembers để tải danh sách thành viên
       await this.loadMembers(group.conversation.id);
       console.log("👥 SELECTED GROUP:", this.selectedGroup);
     } catch (error) {
@@ -381,7 +385,7 @@ export class ChatRoom extends LitElement {
       // Lắng nghe tin nhắn mới từ kênh
       this.channel.on("new_message", (payload) => {
         console.log("📩 Nhận tin nhắn mới:", payload);
-        
+
         // Kiểm tra xem payload.message có tồn tại và có chứa thuộc tính content không
         if (payload.message && payload.message.content) {
           const newMessage = {
@@ -421,6 +425,7 @@ export class ChatRoom extends LitElement {
         console.log("Tin nhắn bị xóa:", payload);
         this.messages = this.messages.filter(msg => msg.id !== payload.message_id);
       });
+
       // Nhận phản ứng emoji từ WebSocket
       this.channel.on("reaction_added", (payload) => {
         console.log("💬 Nhận phản ứng emoji:", payload);
@@ -429,12 +434,19 @@ export class ChatRoom extends LitElement {
           if (msg.id !== payload.message_id) return msg;
 
           const reactions = Array.isArray(msg.reaction) ? [...msg.reaction] : [];
-          const existingReaction = reactions.find(r => r.emoji === payload.emoji);
+          let existingReaction = reactions.find(r => r.emoji === payload.emoji);
 
           if (existingReaction) {
-            existingReaction.count += 1; // Tăng số lượng emoji
+            if (!existingReaction.users.includes(payload.user_id)) {
+              existingReaction.users.push(payload.user_id); // ✅ Thêm user vào danh sách
+              existingReaction.count += 1; // ✅ Tăng số lượng emoji
+            }
           } else {
-            reactions.push({ emoji: payload.emoji, count: 1 }); // Thêm emoji mới
+            reactions.push({ 
+              emoji: payload.emoji, 
+              count: 1, 
+              users: [payload.user_id] // ✅ Thêm emoji mới với danh sách users
+            });
           }
 
           return { ...msg, reaction: reactions };
@@ -501,7 +513,7 @@ export class ChatRoom extends LitElement {
       // Giả sử bạn có email của người dùng trong biến this.userEmail
       const message = {
         content: input.value.trim(),
-        user_id: this.userId, 
+        user_id: this.userId,
       };
 
       this.channel.push("new_message", message)
@@ -593,17 +605,19 @@ export class ChatRoom extends LitElement {
     this.requestUpdate();
   }
 
-  reactToMessage(messageId, emoji) {
-    console.log(`📢 Thả hoặc bỏ emoji: ${emoji} vào tin nhắn ${messageId}`);
-
+  reactToMessage(userId, messageId, emoji) {
+    console.log(`📢 Thả hoặc bỏ emoji: ${emoji} vào tin nhắn ${messageId} từ người dùng ${userId}}`);
     const message = this.messages.find(msg => msg.id === messageId);
     if (!message) return;
 
     if (!Array.isArray(message.reaction)) {
       message.reaction = [];
     }
-
-    const existingReaction = message.reaction.find(r => r.emoji === emoji);
+    
+    // Kiểm tra xem người dùng đã thả emoji này chưa
+    const existingReaction = message.reaction.find(
+      r => r.emoji === emoji && Array.isArray(r.users) && r.users.includes(userId)
+    );
 
     if (this.channel) {
       if (existingReaction) {
@@ -621,7 +635,6 @@ export class ChatRoom extends LitElement {
       }
     }
   }
-
 
   // Phương thức lấy danh sách bạn bè từ API
   async loadFriends() {
@@ -965,18 +978,18 @@ export class ChatRoom extends LitElement {
     this.selectedGroup = group;
     console.log("🚀 Đang chỉnh sửa nhóm:", this.selectedGroup);
 
-    // 🔹 Đóng các modal khác trước khi mở modal chỉnh sửa
+    //  Đóng các modal khác trước khi mở modal chỉnh sửa
     this.closeMemberListModal();
     this.closeAddMemberModal();
     this.closeCreateGroupModal();
 
-    // 🔹 Gán thông tin nhóm vào biến state
+    //  Gán thông tin nhóm vào biến state
     this.selectedGroupName = group.conversation.name;
     this.onlyAdminCanMessage = group.conversation.only_admin_can_message; // ✅ Cập nhật checkbox
     this.visibility = group.conversation.visibility; // ✅ Cập nhật dropdown
 
     try {
-      // 🔹 Gọi loadMembers để lấy danh sách thành viên mới nhất
+      //  Gọi loadMembers để lấy danh sách thành viên mới nhất
       await this.loadMembers(group.conversation.id);
       console.log("👥 Danh sách thành viên đã tải:", this.selectedGroup.members);
     } catch (error) {
@@ -1062,7 +1075,7 @@ export class ChatRoom extends LitElement {
                     <div class="search-container">
                       <button class="search-icon" @click="${this.toggleSearch}">&#x1F50E;&#xFE0E;</button>
 
-                      <!-- 🔹 Dropdown và ô tìm kiếm -->
+                      <!-- Dropdown và ô tìm kiếm -->
                       <div class="search-controls ${this.showSearchInput ? 'visible' : ''}">
                       <input 
                       type="text" 
@@ -1084,7 +1097,7 @@ export class ChatRoom extends LitElement {
                     ${this.searchResults && this.searchResults.length > 0 ? html`
                     <div class="search-results">
                       ${this.searchResults.map((msg) => html`
-                        <div class="message ${msg.sender} search-result" @click="${() => this.jumpToMessage(msg.id)}">
+                        <div class="message ${msg.sender} search-result">
                           <div class="email">${msg.email}</div>
                           <div class="content">${msg.content}</div>
                         </div>
@@ -1098,28 +1111,36 @@ export class ChatRoom extends LitElement {
           @contextmenu="${(e) => this.showContextMenu(e, msg.id)}">
             <div class="email">${msg.email}</div>
 
+         <!-- 🔥 Thêm phần hiển thị tin nhắn được trả lời -->
+          ${msg.reply_to ? html`
+            <div class="reply-box">
+              <strong>${msg.reply_to.user_name}:</strong>
+              <span>${msg.reply_to.content}</span>
+            </div>
+          ` : ''}
+
           <div class="content">
                    ${this.editingMessageId === msg.id ? html`
                        <input type="text" .value="${this.editingMessageContent}"
                          @input="${(e) => this.editingMessageContent = e.target.value}" />
                        <button @click="${() => this.saveEditedMessage(msg.id)}">Lưu</button>
-                       <button @click="${() => this.cancelEditing()}">Hủy</button>`
-         : msg.is_edited ? html`
-                         <span class="edited-text" @click="${() => this.toggleEditHistory(msg.id)}">
-                           ${msg.content} <span class="edited-label">(Đã chỉnh sửa)</span>
-                         </span>
-                         ${this.showEditHistoryId === msg.id ? html`
-                           <div class="edit-history">
-                             ${this.editHistory[msg.id]?.map(edit => html`
-                               <div class="edit-item">${edit.previous_content}</div>
-                             `) ?? ''}
-                           </div>
-                         ` : ''}
-                       `
-           : (msg.is_recalled ? html`<em>Tin nhắn đã được thu hồi</em>` : msg.content)
-       }
-            </div>
-            
+                       <button @click="${() => this.cancelEditing()}">Hủy</button>
+                       ` : msg.is_recalled ? html`
+                        <em>Tin nhắn đã được thu hồi</em>
+                      ` : msg.is_edited ? html`
+                        <span class="edited-text" @click="${() => this.toggleEditHistory(msg.id)}">
+                          ${msg.content} <span class="edited-label">(Đã chỉnh sửa)</span>
+                        </span>
+                        ${this.showEditHistoryId === msg.id ? html`
+                          <div class="edit-history">
+                            ${this.editHistory[msg.id]?.map(edit => html`
+                              <div class="edit-item">${edit.previous_content}</div>
+                            `) ?? ''}
+                          </div>
+                        ` : ''}
+                      ` : msg.content}
+                    </div>
+                                
             ${Array.isArray(msg.reaction) && msg.reaction.length > 0 && msg.reaction.some(r => r.emoji !== "unknown")
         ? html`
                     <div class="reaction">
@@ -1136,7 +1157,7 @@ export class ChatRoom extends LitElement {
                 ${!msg.is_recalled ? html`
                   <div class="emoji-picker">
                    ${["😍", "😂", "👍", "❤️"].map((emoji) => html`
-                     <button @click="${() => this.reactToMessage(msg.id, emoji)}">${emoji}</button>
+                     <button @click="${() => this.reactToMessage(msg.user_id ,msg.id, emoji)}">${emoji}</button>
                       `)}
                     </div>
                       ` : ""}
@@ -1153,8 +1174,8 @@ export class ChatRoom extends LitElement {
                 </form>
               `
         : html`<p>Chọn nhóm để bắt đầu chat</p>`}
-      </div>
-      </div>
+        </div>
+        </div>
         ${this.contextMenuVisible ? html`
         <div class="context-menu"
           style="top: ${this.contextMenuPosition.top}px; left: ${this.contextMenuPosition.left}px;"
