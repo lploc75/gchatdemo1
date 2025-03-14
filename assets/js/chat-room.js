@@ -254,6 +254,28 @@ export class ChatRoom extends LitElement {
   border-radius: 5px;
   flex-grow: 1;
 }
+
+.reply-box {
+  background-color: #f1f1f1; /* Màu nền nhạt */
+  border-left: 4px solid #007bff; /* Viền xanh để làm nổi bật */
+  padding: 8px 12px;
+  margin: 4px 0;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #333;
+}
+
+.reply-box strong {
+  display: block; /* Hiển thị email trên một dòng riêng */
+  color: #007bff; /* Màu xanh cho email */
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+.reply-box span {
+  color: #555; /* Màu chữ xám nhẹ */
+  font-style: italic;
+}
 `;
 
   static properties = {
@@ -336,6 +358,16 @@ export class ChatRoom extends LitElement {
 
       const data = await res.json(); // ✅ Lấy dữ liệu từ API
       console.log("📩 Tin nhắn từ API:", data); // ✅ Kiểm tra dữ liệu API
+
+        // Tạo một map để tra cứu tin nhắn theo ID
+        const messageMap = {};
+        data.forEach(msg => {
+            messageMap[msg.id] = {
+                email: msg.user_email,
+                content: msg.content
+            };
+        });
+
       this.messages = data.map(msg => {
         // console.log(`🧐 Tin nhắn ID: ${msg.id}, user_id: ${msg.user_id}, this.userId: ${this.userId},`);
         return {
@@ -354,6 +386,7 @@ export class ChatRoom extends LitElement {
           : [], // ✅ Format reactions thành mảng [{ emoji, count, users }]
           is_recalled: msg.is_recalled, // Tin nhắn bị thu hồi
           is_edited: msg.is_edited, // Tin nhắn đã sửa
+          reply_to_message: msg.reply_to_message
         };
       });
       console.log("✅ Tin nhắn sau khi format:", this.messages);
@@ -605,19 +638,23 @@ export class ChatRoom extends LitElement {
     this.requestUpdate();
   }
 
-  reactToMessage(userId, messageId, emoji) {
-    console.log(`📢 Thả hoặc bỏ emoji: ${emoji} vào tin nhắn ${messageId} từ người dùng ${userId}}`);
+  reactToMessage(messageId, emoji) {
+    console.log(`📢 Thả hoặc bỏ emoji: ${emoji} vào tin nhắn ${messageId} từ người dùng ${this.userId}}`);
     const message = this.messages.find(msg => msg.id === messageId);
+    console.log("📩 Tin nhắn cần thả emoji:", message);
+    
     if (!message) return;
-
     if (!Array.isArray(message.reaction)) {
       message.reaction = [];
     }
     
     // Kiểm tra xem người dùng đã thả emoji này chưa
     const existingReaction = message.reaction.find(
-      r => r.emoji === emoji && Array.isArray(r.users) && r.users.includes(userId)
+      r => r.emoji === emoji && Array.isArray(r.users) && r.users.includes(this.userId)
     );
+
+    console.log("📩 existingReaction:", existingReaction);
+
 
     if (this.channel) {
       if (existingReaction) {
@@ -1105,17 +1142,17 @@ export class ChatRoom extends LitElement {
                     </div>
                     ` : html`
                      ${this.messages.map((msg) => html`
-        <div class="message-container ${msg.sender === 'me' ? 'me' : 'other'}">
+          <div class="message-container ${msg.sender === 'me' ? 'me' : 'other'}">
           ${msg.sender !== 'me' ? html`<img class="avatar" src="${msg.avatar_url}" alt="Avatar">` : ''}
           <div class="message ${msg.sender}"      
           @contextmenu="${(e) => this.showContextMenu(e, msg.id)}">
             <div class="email">${msg.email}</div>
 
          <!-- 🔥 Thêm phần hiển thị tin nhắn được trả lời -->
-          ${msg.reply_to ? html`
+          ${msg.reply_to_message ? html`
             <div class="reply-box">
-              <strong>${msg.reply_to.user_name}:</strong>
-              <span>${msg.reply_to.content}</span>
+              <strong>${msg.reply_to_message.email}:</strong>
+              <span>${msg.reply_to_message.content}</span>
             </div>
           ` : ''}
 
@@ -1157,7 +1194,7 @@ export class ChatRoom extends LitElement {
                 ${!msg.is_recalled ? html`
                   <div class="emoji-picker">
                    ${["😍", "😂", "👍", "❤️"].map((emoji) => html`
-                     <button @click="${() => this.reactToMessage(msg.user_id ,msg.id, emoji)}">${emoji}</button>
+                     <button @click="${() => this.reactToMessage(msg.id, emoji)}">${emoji}</button>
                       `)}
                     </div>
                       ` : ""}

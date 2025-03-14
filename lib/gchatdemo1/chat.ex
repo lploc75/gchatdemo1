@@ -49,7 +49,6 @@ defmodule Gchatdemo1.Chat do
 
   # "Lấy danh sách tin nhắn của một nhóm chat và emoji reactions kèm email và avatar của user"
   def list_messages(conversation_id, user_id) do
-    # Subquery: Lấy các phản ứng (reactions) của những tin nhắn thuộc cuộc trò chuyện có conversation_id
     reactions_query =
       from(r in Reaction,
         where:
@@ -64,17 +63,23 @@ defmodule Gchatdemo1.Chat do
           message_id: r.message_id,
           emoji: coalesce(r.emoji, "unknown"),
           count: count(r.emoji),
-          user_ids: fragment("jsonb_agg(?)", r.user_id)  # 👈 Thêm danh sách user_id vào JSON
+          user_ids: fragment("jsonb_agg(?)", r.user_id)
         }
       )
-      from(m in Message,
+
+    from(m in Message,
       join: u in assoc(m, :user),
       left_join: r in subquery(reactions_query),
       on: r.message_id == m.id,
+      # Join vào tin nhắn gốc (reply_to_message) nếu có reply_to_id
+      left_join: rm in Message,
+      on: m.reply_to_id == rm.id,
+      left_join: ru in User,
+      on: rm.user_id == ru.id, # Lấy thông tin người gửi của tin nhắn gốc
       where: m.conversation_id == ^conversation_id,
       where: m.is_deleted == false or m.user_id != ^user_id,
       order_by: [asc: m.inserted_at],
-      group_by: [m.id, u.email, u.avatar_url],
+      group_by: [m.id, u.email, u.avatar_url, rm.content, ru.email],
       select: %{
         id: m.id,
         user_id: m.user_id,
@@ -90,11 +95,18 @@ defmodule Gchatdemo1.Chat do
             r.emoji,
             r.count,
             r.user_ids
-          )
+          ),
+        reply_to_message: fragment(
+          "CASE WHEN ? IS NOT NULL THEN jsonb_build_object('email', COALESCE(?, 'Không xác định'), 'content', COALESCE(?, '[Tin nhắn không còn tồn tại]')) ELSE NULL END",
+          m.reply_to_id,
+          ru.email,
+          rm.content
+        )
       }
     )
     |> Repo.all()
   end
+
 
   @doc "Xóa tin nhắn (chỉ user gửi tin nhắn mới có quyền xóa)"
   def delete_message(message_id, user_id) do
