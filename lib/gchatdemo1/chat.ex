@@ -393,13 +393,14 @@ defmodule Gchatdemo1.Chat do
   end
 
   @doc "Gửi tin nhắn vào nhóm"
-  def send_message(user_id, conversation_id, content, message_type \\ "text") do
+  def send_message(user_id, conversation_id, content, reply_to_id \\ nil, message_type \\ "text") do
     IO.inspect(
       %{
         user_id: user_id,
         conversation_id: conversation_id,
         content: content,
-        message_type: message_type
+        message_type: message_type,
+        reply_to_id: reply_to_id
       },
       label: "📩 Dữ liệu gửi tin nhắn"
     )
@@ -409,10 +410,12 @@ defmodule Gchatdemo1.Chat do
       user_id: user_id,
       conversation_id: conversation_id,
       content: content,
-      message_type: message_type
+      message_type: message_type,
+      reply_to_id: reply_to_id
     })
     |> Repo.insert()
   end
+
 
   def get_message(message_id) do
     case Repo.get(Message, message_id) do

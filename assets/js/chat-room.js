@@ -286,23 +286,28 @@ export class ChatRoom extends LitElement {
     channel: { type: Object },
     selectedMessageId: { type: String },
     contextMenuVisible: { type: Boolean },
-    contextMenuPosition: { type: Object }
+    contextMenuPosition: { type: Object },
+    replyToMessageId: { type: Number }, // Thêm biến lưu tin nhắn được trả lời
+    replyToMessageContent: { type: String }, // Lưu nội dung tin nhắn được trả lời
+    replyToMessageEmail: { type: String }, // Lưu email người gửi tin nhắn được trả lời
   };
 
   constructor() {
     super();
-    this.groups = [];
-    this.selectedGroup = null;
+    this.groups = []; // Danh sách nhóm chat
+    this.selectedGroup = null; // Nhóm chat đang được chọn
     this.selectedMessageId = null; // Lưu tin nhắn đang được chọn để thu hồi
-    this.messages = [];
+    this.messages = []; // Danh sách tin nhắn
     this.socket = null;
     this.channel = null;
     this.contextMenuVisible = false; // Menu khi nhắn chuột phải
     this.contextMenuPosition = { top: 0, left: 0 };
     this.editHistory = {}; // Lưu lịch sử chỉnh sửa theo từng messageId
     this.showEditHistoryId = null; // Message đang hiển thị lịch sử chỉnh sửa
-    this.showSearchInput = false;
-
+    this.showSearchInput = false; // Ẩn hiện ô tìm kiếm
+    this.replyToMessageId = null; // Id tin nhắn được trả lời
+    this.replyToMessageContent = ""; // Nội dung tin nhắn được trả lời
+    this.replyToMessageEmail = ""; // Email người gửi tin nhắn được trả lời
   }
 
   async getUserIdAndToken() {
@@ -359,14 +364,14 @@ export class ChatRoom extends LitElement {
       const data = await res.json(); // ✅ Lấy dữ liệu từ API
       console.log("📩 Tin nhắn từ API:", data); // ✅ Kiểm tra dữ liệu API
 
-        // Tạo một map để tra cứu tin nhắn theo ID
-        const messageMap = {};
-        data.forEach(msg => {
-            messageMap[msg.id] = {
-                email: msg.user_email,
-                content: msg.content
-            };
-        });
+      // Tạo một map để tra cứu tin nhắn theo ID
+      const messageMap = {};
+      data.forEach(msg => {
+        messageMap[msg.id] = {
+          email: msg.user_email,
+          content: msg.content
+        };
+      });
 
       this.messages = data.map(msg => {
         // console.log(`🧐 Tin nhắn ID: ${msg.id}, user_id: ${msg.user_id}, this.userId: ${this.userId},`);
@@ -378,12 +383,12 @@ export class ChatRoom extends LitElement {
           email: msg.user_email, // Lấy email từ API
           avatar_url: msg.avatar_url,
           reaction: msg.reactions
-          ? Object.entries(msg.reactions).map(([emoji, reactionData]) => ({
+            ? Object.entries(msg.reactions).map(([emoji, reactionData]) => ({
               emoji,
               count: reactionData.count,
               users: reactionData.users || [] // ✅ Lấy danh sách `user_id` của người thả reaction
             }))
-          : [], // ✅ Format reactions thành mảng [{ emoji, count, users }]
+            : [], // ✅ Format reactions thành mảng [{ emoji, count, users }]
           is_recalled: msg.is_recalled, // Tin nhắn bị thu hồi
           is_edited: msg.is_edited, // Tin nhắn đã sửa
           reply_to_message: msg.reply_to_message
@@ -417,8 +422,7 @@ export class ChatRoom extends LitElement {
 
       // Lắng nghe tin nhắn mới từ kênh
       this.channel.on("new_message", (payload) => {
-        console.log("📩 Nhận tin nhắn mới:", payload);
-
+        console.log("📩 Tin nhắn mới:", payload.message);
         // Kiểm tra xem payload.message có tồn tại và có chứa thuộc tính content không
         if (payload.message && payload.message.content) {
           const newMessage = {
@@ -428,7 +432,12 @@ export class ChatRoom extends LitElement {
             sender: payload.sender,
             email: payload.email, // Email từ payload của WebSocket
             avatar_url: payload.avatar_url,
-          };
+            reply_to_message:
+            payload.message.reply_to_message &&
+            (payload.message.reply_to_message.content || payload.message.reply_to_message.email)
+              ? payload.message.reply_to_message
+              : null,          
+            };
           // Thêm tin nhắn mới vào danh sách tin nhắn hiện tại
           newMessage.sender = (payload.message.user_id === this.userId) ? "me" : "other";
           this.messages = [...this.messages, newMessage];
@@ -440,6 +449,7 @@ export class ChatRoom extends LitElement {
           console.error("❌ Tin nhắn không hợp lệ:", payload.email);
         }
       });
+
       this.channel.on("message_recalled", (payload) => {
         console.log("🚨 Tin nhắn bị thu hồi:", payload);
 
@@ -475,9 +485,9 @@ export class ChatRoom extends LitElement {
               existingReaction.count += 1; // ✅ Tăng số lượng emoji
             }
           } else {
-            reactions.push({ 
-              emoji: payload.emoji, 
-              count: 1, 
+            reactions.push({
+              emoji: payload.emoji,
+              count: 1,
               users: [payload.user_id] // ✅ Thêm emoji mới với danh sách users
             });
           }
@@ -547,13 +557,20 @@ export class ChatRoom extends LitElement {
       const message = {
         content: input.value.trim(),
         user_id: this.userId,
+        reply_to_id: this.replyToMessageId, // ✅ Gửi kèm ID tin nhắn được trả lời
+        reply_to_message: {
+          content: this.replyToMessageContent, // ✅ Gửi luôn nội dung tin nhắn gốc
+          email: this.replyToMessageEmail // ✅ Gửi luôn email người gửi tin nhắn gốc
+        }
       };
-
       this.channel.push("new_message", message)
         .receive("ok", (resp) => {
           console.log("✅ Tin nhắn đã gửi:", resp.message);
           // Cập nhật danh sách tin nhắn
           // this.messages = [...this.messages, { ...resp.message, sender: "me" }];
+          this.replyToMessageId = null; // Reset tin nhắn được trả lời
+          this.replyToMessageContent = ""; // Reset nội dung tin nhắn được trả lời
+          this.replyToMessageEmail = ""; // Reset email người gửi tin nhắn được trả lời 
         })
         .receive("error", (err) => {
           console.error("❌ Lỗi gửi tin nhắn:", err);
@@ -568,21 +585,17 @@ export class ChatRoom extends LitElement {
 
   showContextMenu(event, messageId) {
     event.preventDefault();
-    console.log("📌 Chuột phải vào tin nhắn:", messageId); // Kiểm tra hàm có chạy không
+    console.log("📌 Chuột phải vào tin nhắn:", messageId);
 
     const msg = this.messages.find(msg => msg.id === messageId);
     if (!msg) return;
 
-    // Nếu tin nhắn của sender là "other" -> Không hiển thị context menu
-    if (msg.sender === "other") {
-      console.log("🚫 Không thể mở context menu cho tin nhắn của người khác");
-      return;
-    }
     this.selectedMessageId = messageId; // Lưu ID tin nhắn đang chọn
     this.contextMenuPosition = { top: event.clientY, left: event.clientX };
     this.contextMenuVisible = true;
+
     console.log("📌 Hiển thị context menu tại:", this.contextMenuPosition);
-    this.requestUpdate(); // 🔥 Cập nhật UI để hiển thị context menu
+    this.requestUpdate(); // 🔥 Cập nhật UI
   }
 
   startEditingMessage(messageId) {
@@ -642,12 +655,12 @@ export class ChatRoom extends LitElement {
     console.log(`📢 Thả hoặc bỏ emoji: ${emoji} vào tin nhắn ${messageId} từ người dùng ${this.userId}}`);
     const message = this.messages.find(msg => msg.id === messageId);
     console.log("📩 Tin nhắn cần thả emoji:", message);
-    
+
     if (!message) return;
     if (!Array.isArray(message.reaction)) {
       message.reaction = [];
     }
-    
+
     // Kiểm tra xem người dùng đã thả emoji này chưa
     const existingReaction = message.reaction.find(
       r => r.emoji === emoji && Array.isArray(r.users) && r.users.includes(this.userId)
@@ -1002,6 +1015,26 @@ export class ChatRoom extends LitElement {
     }
   }
 
+ // 🔥 Khi bấm "Trả lời tin nhắn"
+  replyToMessage(messageId) {
+    const message = this.messages.find(msg => msg.id === messageId);
+    if (!message) return;
+
+    console.log("🔥 Tin nhắn được trả lời:", message);
+
+    this.replyToMessageId = messageId;
+    this.replyToMessageContent = message.content; // Lưu nội dung để hiển thị
+    this.replyToMessageEmail = message.email; // Lưu email người gửi
+    this.requestUpdate(); // Cập nhật UI
+  }
+  
+  // 🔥 Hủy trả lời tin nhắn
+  cancelReply() {
+    this.replyToMessageId = null;
+    this.replyToMessageContent = "";
+    this.replyToMessageEmail = "";
+    this.requestUpdate();
+  }
   // Mở modal tạo nhóm và load danh sách bạn bè
   async openCreateGroupModal() {
     await this.loadFriends();
@@ -1203,6 +1236,16 @@ export class ChatRoom extends LitElement {
                   `}
               </div>
 
+              <!-- 🔥 Hiển thị chỉ khi đang trả lời tin nhắn -->
+              ${this.replyToMessageId
+                ? html`
+                    <div class="reply-preview">
+                      <p>📝 Đang trả lời: <strong>${this.replyToMessageEmail}</strong> - "${this.replyToMessageContent}"</p>
+                      <button @click=${this.cancelReply}>❌ Hủy</button>
+                    </div>
+                  `
+                : ""}
+
                 <form @submit="${this.sendMessage}" class="message-input"
                   ?hidden="${this.selectedGroup?.conversation.only_admin_can_message &&
         this.userId !== this.selectedGroup?.admin_user_id}">
@@ -1215,25 +1258,34 @@ export class ChatRoom extends LitElement {
         </div>
         ${this.contextMenuVisible ? html`
         <div class="context-menu"
-          style="top: ${this.contextMenuPosition.top}px; left: ${this.contextMenuPosition.left}px;"
-          @click="${(e) => e.stopPropagation()}">
-          ${(() => {
+  style="top: ${this.contextMenuPosition.top}px; left: ${this.contextMenuPosition.left}px;"
+  @click="${(e) => e.stopPropagation()}">
+  ${(() => {
           const msg = this.messages.find(msg => msg.id === this.selectedMessageId);
           if (!msg) return null;
 
           return html`
-              ${!msg.is_recalled
-              ? html`
+      ${msg.user_id === this.userId
+              ? html` <!-- Nếu là chủ tin nhắn -->
+          ${!msg.is_recalled
+                  ? html`
               <button @click="${() => this.recallMessage(this.selectedMessageId)}">Thu hồi tin nhắn</button>
               <button @click="${() => this.startEditingMessage(this.selectedMessageId)}">Chỉnh sửa tin nhắn</button>
               <button @click="${() => this.openShareModal(this.selectedMessageId)}">Chia sẻ tin nhắn</button>
-              `
-              : ""}
-            <button @click="${() => this.deleteMessage(this.selectedMessageId)}">Xóa tin nhắn</button>
-            
-            `;
+              <button @click="${() => this.replyToMessage(this.selectedMessageId)}">Trả lời tin nhắn</button>
+            `
+                  : ""
+                }
+          <button @click="${() => this.deleteMessage(this.selectedMessageId)}">Xóa tin nhắn</button> <!-- 🔥 Luôn có nút xóa -->
+        `
+              : html` <!-- Nếu không phải chủ tin nhắn -->
+          <button @click="${() => this.replyToMessage(this.selectedMessageId)}">Trả lời tin nhắn</button>
+        `
+            }
+    `;
         })()}
-      </div>
+</div>
+
         ` : ''}
 
       <!-- Modal chia sẻ tin nhắn -->

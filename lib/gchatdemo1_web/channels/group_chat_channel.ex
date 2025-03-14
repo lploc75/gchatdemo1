@@ -15,19 +15,22 @@ defmodule Gchatdemo1Web.GroupChatChannel do
     end
   end
 
-  def handle_in("new_message", %{"content" => content, "user_id" => sender_id}, socket) do
+  def handle_in("new_message", %{"content" => content,"user_id" => sender_id,"reply_to_id" => reply_to_id,
+                  "reply_to_message" => reply_to_message}, socket) do
     IO.puts("🔥 Received new message")
 
     group_id = socket.assigns.group_id
     user_email = Accounts.get_user!(sender_id).email  # Lấy email đúng của sender
     avatar_url = Accounts.get_user!(sender_id).avatar_url
-    case Chat.send_message(sender_id, group_id, content) do  # Dùng sender_id để lưu tin nhắn
+
+    case Chat.send_message(sender_id, group_id, content, reply_to_id) do
       {:ok, message} ->
         broadcast!(socket, "new_message", %{
           message: %{
             user_id: message.user_id,
             id: message.id,
             content: message.content,
+            reply_to_message: reply_to_message # ✅ Gửi lại đúng như frontend đã gửi
           },
           sender: "me", # Gán trước ở đây, chỉnh sửa sẽ ở phần channel.on
           email: user_email,
