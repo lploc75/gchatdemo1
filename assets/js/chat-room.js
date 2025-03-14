@@ -3,15 +3,19 @@ import { Socket } from "phoenix";
 
 export class ChatRoom extends LitElement {
   static styles = css`
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+    }
     .chat-container {
       display: flex;
       border: 1px solid #ddd;
       border-radius: 8px;
       overflow: hidden;
-      height: auto;
+      height: 100vh; /* Chiều cao cố định là toàn viewport */
       background: #f5f7fa;
     }
-
     .group-list {
       width: 25%;
       padding: 10px;
@@ -51,8 +55,8 @@ export class ChatRoom extends LitElement {
       flex-direction: column;
       background: #ffffff;
       padding: 15px;
+      overflow: hidden; /* Ẩn overflow ngoài khung chat */
     }
-
     .chat-box h3 {
       text-align: center;
       color: #333;
@@ -1421,11 +1425,11 @@ export class ChatRoom extends LitElement {
                   ? html`
                       <div class="reply-preview">
                         <p>
-                          📝 Đang trả lời:
+                          Đang trả lời:
                           <strong>${this.replyToMessageEmail}</strong> -
                           "${this.replyToMessageContent}"
                         </p>
-                        <button @click=${this.cancelReply}>❌ Hủy</button>
+                        <button @click=${this.cancelReply}>Hủy</button>
                       </div>
                     `
                   : ""}
