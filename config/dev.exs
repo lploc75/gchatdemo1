@@ -1,10 +1,19 @@
 import Config
 
-# Configure your database
-config :gchatdemo1, Gchatdemo1.Repo,
+# Configure your database của kiên
+# config :gchatdemo1, Gchatdemo1.Repo,
+#   username: "postgres",
+#   password: "1412",
+#   hostname: "172.18.138.0",
+#   database: "gchatdemo1_dev",
+#   stacktrace: true,
+#   show_sensitive_data_on_connection_error: true,
+#   pool_size: 10
+
+  config :gchatdemo1, Gchatdemo1.Repo,
   username: "postgres",
   password: "postgres",
-  hostname: "localhost",
+  hostname: "postgres",
   database: "gchatdemo1_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,

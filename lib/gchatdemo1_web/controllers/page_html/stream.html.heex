@@ -1,0 +1,36 @@
+<%= if @stream_infor do %>
+  <script>
+    var videoSrc = window.location.origin + "/video/<%= @stream_infor.output_path %>";
+  </script>
+<% else %>
+  <p>Không có stream nào đang hoạt động.</p>
+  <script>
+    var videoSrc = ""; // Không có stream thì không load video
+  </script>
+<% end %>
+
+<script type="module">
+  import {
+    VidstackPlayer,
+    VidstackPlayerLayout 
+  } from 'https://cdn.vidstack.io/player.core';
+
+  document.addEventListener("DOMContentLoaded", async function () {
+    
+      const player = await VidstackPlayer.create({
+        target: '#player',
+        title: 'Membrane Demo',
+        src: videoSrc || "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+        streamType: "live-dvr",
+        load: 'eager',
+        layout: new VidstackPlayerLayout(),
+      });
+    
+  });
+</script>
+
+<div class="flex flex-col items-center gap-4">
+  <div class="w-full max-w-[1400px] aspect-video">
+    <video id="player" muted autoplay playsinline class="w-full h-full object-cover"></video>
+  </div>
+</div>
