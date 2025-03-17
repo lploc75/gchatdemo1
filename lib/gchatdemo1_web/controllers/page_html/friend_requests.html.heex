@@ -17,6 +17,7 @@
             <ul>
                 <%= for request <- @requests do %>
                     <li>
+                    <img src={request.avatar_url} alt="avatar" class="message-avatar" />
                         <p>Email: <%= request.email %>
                         </p>
                         <form action={~p"/friend_requests/#{request.id}/accept"} method="post">

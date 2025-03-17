@@ -4,25 +4,38 @@ defmodule Gchatdemo1Web.PageController do
   alias Gchatdemo1.Messaging
 
   def home(conn, _params) do
-    # The home page is often custom made,
-    # so skip the default app layout.
+    # Trang home thường dùng layout riêng, nên render với layout: false
     render(conn, :home, layout: false)
   end
 
-  @spec dashboard(Plug.Conn.t(), any()) :: Plug.Conn.t()
-  def dashboard(conn, params) do
+  # Dashboard chỉ hiển thị thông tin chung (không còn chứa form tìm kiếm bạn bè)
+  def dashboard(conn, _params) do
+    current_user = conn.assigns.current_user
+    friends = Accounts.list_friends(current_user.id)
+
+    friends_with_conversations =
+      Enum.map(friends, fn friend ->
+        conversation = Messaging.get_or_create_conversation(current_user.id, friend.friend_id)
+        Map.put(friend, :conversation, conversation)
+      end)
+
+    render(conn, :dashboard,
+      current_user: current_user,
+      friends: friends,
+      friends: friends_with_conversations
+    )
+  end
+
+  # Action friends dùng để hiển thị danh sách bạn bè và xử lý tìm kiếm bạn bè
+  def friends(conn, params) do
     current_user = conn.assigns.current_user
     friends = Accounts.list_friends(current_user.id)
 
     # Tạo danh sách bạn bè có thêm thông tin conversation
     friends_with_conversations =
       Enum.map(friends, fn friend ->
-        # Lấy hoặc tạo conversation dựa trên current_user và friend.friend_id
         conversation = Messaging.get_or_create_conversation(current_user.id, friend.friend_id)
-        # Nếu bạn muốn truyền toàn bộ conversation, dùng key :conversation
         Map.put(friend, :conversation, conversation)
-        # Nếu chỉ cần conversation_id, có thể dùng:
-        # Map.put(friend, :conversation_id, conversation.id)
       end)
 
     if conn.method == "POST" do
@@ -32,7 +45,7 @@ defmodule Gchatdemo1Web.PageController do
             nil ->
               conn
               |> put_flash(:error, "Không tìm thấy người dùng")
-              |> render(:dashboard,
+              |> render(:friends,
                 current_user: current_user,
                 searched_user: nil,
                 status: nil,
@@ -47,7 +60,7 @@ defmodule Gchatdemo1Web.PageController do
                   Accounts.get_friendship_status(current_user, searched_user)
                 end
 
-              render(conn, :dashboard,
+              render(conn, :friends,
                 current_user: current_user,
                 searched_user: searched_user,
                 status: status,
@@ -56,10 +69,10 @@ defmodule Gchatdemo1Web.PageController do
           end
 
         _ ->
-          redirect(conn, to: "/dashboard")
+          redirect(conn, to: "/friends")
       end
     else
-      render(conn, :dashboard,
+      render(conn, :friends,
         current_user: current_user,
         searched_user: nil,
         status: nil,
@@ -68,9 +81,8 @@ defmodule Gchatdemo1Web.PageController do
     end
   end
 
-  # Hiển thị trang search
+  # Trang tìm kiếm riêng (nếu cần)
   def search_form(conn, _params) do
-    # Truyền layout: false nếu không dùng layout chung
     render(conn, :search, layout: false)
   end
 
@@ -80,7 +92,7 @@ defmodule Gchatdemo1Web.PageController do
     case Accounts.search_user_by_email(email) do
       nil ->
         conn
-        |> put_flash(:error, "Không tìm thấy người dùng")
+|> put_flash(:error, "Không tìm thấy người dùng")
         |> redirect(to: "/search")
 
       searched_user ->
@@ -88,8 +100,7 @@ defmodule Gchatdemo1Web.PageController do
 
         render(conn, :search,
           current_user: current_user,
-searched_user: searched_user,
-          # Thêm dòng này
+          searched_user: searched_user,
           status: status
         )
     end
@@ -102,12 +113,12 @@ searched_user: searched_user,
       {:ok, _} ->
         conn
         |> put_flash(:info, "Đã gửi yêu cầu kết bạn!")
-        |> redirect(to: "/dashboard")
+        |> redirect(to: "/friends")
 
       {:error, _} ->
         conn
         |> put_flash(:error, "Không thể gửi yêu cầu")
-        |> redirect(to: "/dashboard")
+        |> redirect(to: "/friends")
     end
   end
 
@@ -118,16 +129,15 @@ searched_user: searched_user,
       {:ok, _} ->
         conn
         |> put_flash(:info, "Đã hủy yêu cầu")
-        |> redirect(to: "/dashboard")
+        |> redirect(to: "/friends")
 
       {:error, _} ->
         conn
         |> put_flash(:error, "Không thể hủy")
-        |> redirect(to: "/dashboard")
+        |> redirect(to: "/friends")
     end
   end
 
-  # Hiển thị danh sách lời mời kết bạn
   def friend_requests(conn, _params) do
     current_user = conn.assigns.current_user
     requests = Accounts.list_pending_friend_requests(current_user.id)
@@ -135,7 +145,6 @@ searched_user: searched_user,
     render(conn, :friend_requests, requests: requests)
   end
 
-  # Xử lý chấp nhận lời mời
   def accept_friend_request(conn, %{"id" => request_id}) do
     case Accounts.accept_friend_request(request_id) do
       {:ok, _} ->
@@ -150,7 +159,6 @@ searched_user: searched_user,
     end
   end
 
-  # Xử lý từ chối lời mời
   def decline_friend_request(conn, %{"id" => request_id}) do
     case Accounts.decline_friend_request(request_id) do
       {:ok, _} ->
@@ -165,14 +173,6 @@ searched_user: searched_user,
     end
   end
 
-  # Hiển thị danh sách bạn bè
-  def friends(conn, _params) do
-    current_user = conn.assigns.current_user
-    friends = Accounts.list_friends(current_user.id)
-    render(conn, :friends, friends: friends)
-  end
-
-  # Xử lý hủy kết bạn
   def unfriend(conn, %{"friend_id" => friend_id}) do
     current_user = conn.assigns.current_user
     friend_id = String.to_integer(friend_id)

@@ -24,7 +24,7 @@ defmodule Gchatdemo1Web.Router do
 
     get "/", PageController, :home
     get "/dashboard", PageController, :dashboard
-    post "/dashboard", PageController, :dashboard
+    post "/friends", PageController, :friends
     post "/users/:id/send_request", PageController, :send_friend_request
     post "/users/:id/cancel_request", PageController, :cancel_friend_request
     # Route hiển thị danh sách lời mời

@@ -1,4 +1,3 @@
-<!-- lib/friend_web/controllers/page_html/dashboard.html.heex -->
 <!DOCTYPE html>
 <html lang="en">
 
@@ -16,76 +15,41 @@
         <h2>Thông tin của bạn:</h2>
         <p>ID: <%= @current_user.id %>
         </p>
+        <img src={@current_user.avatar_url} alt="avatar" class="message-avatar" />
         <p>Email: <%= @current_user.email %>
         </p>
         <% end %>
 
-            <!-- Form tìm kiếm -->
-            <form action="/dashboard" method="post">
-                <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()}>
-                <input type="email" name="email" placeholder="Nhập email thành viên" required>
-                <button type="submit">Tìm kiếm</button>
-            </form>
-            <!-- Hiển thị kết quả tìm kiếm -->
-            <%= if @searched_user do %>
-                <h2>Thông tin người dùng tìm thấy:</h2>
-                <p>Email: <%= @searched_user.email %>
-                </p>
-                <p>ID: <%= @searched_user.id %>
-                </p>
+            <!-- Các liên kết chuyển hướng -->
+            <a href={~p"/friends"}>Xem danh sách bạn bè</a><br>
+            <a href={~p"/friend_requests"}>Yêu cầu kết bạn</a>
 
-                <!-- Kiểm tra nếu không phải chính mình thì mới hiển thị nút kết bạn/hủy yêu cầu -->
-                <%= if @searched_user.id !=@current_user.id do %>
-                    <%= case @status do %>
-                        <% "pending" -> %>
-                            <form action={~p"/users/#{@searched_user.id}/cancel_request"} method="post">
-                                <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()}>
-                                <input type="hidden" name="email" value={@searched_user.email}>
-                                <button type="submit">Hủy yêu cầu</button>
-                            </form>
-
-                            <% "accepted" -> %>
-                                <p>Đã là bạn bè</p>
-
-                                <% nil -> %>
-                                    <form action={~p"/users/#{@searched_user.id}/send_request"} method="post">
-                                        <input type="hidden" name="_csrf_token"
-                                            value={Phoenix.Controller.get_csrf_token()}>
-                                        <input type="hidden" name="email" value={@searched_user.email}>
-                                        <button type="submit">Kết bạn</button>
-                                    </form>
-                                    <% end %>
-                                        <% else %>
-                                            <p style="color: rgb(245, 0, 0);">(Bạn không thể kết bạn với chính mình)</p>
-                                            <% end %>
-                                                <% end %>
-                                                    <!-- Trong lib/friend_web/controllers/page_html/dashboard.html.heex -->
-                                                    <a href={~p"/friends"}>Xem danh sách bạn bè</a><br>
-                                                    <a href={~p"/friend_requests"}>Yêu cầu kết bạn</a>
-                                                    <!-- Phần hiển thị danh sách bạn bè -->
-                                                    <%= if @friends !=[] do %>
-                                                        <h2>Danh sách bạn bè:</h2>
-                                                        <ul>
-                                                            <%= for friend <- @friends do %>
-                                                                <li
-                                                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5em;">
-                                                                    <div>
-                                                                        <strong>Email:</strong>
-                                                                        <%= friend.email %> <br>
-                                                                            <strong>ID:</strong>
-                                                                            <%= friend.friend_id %>
-                                                                    </div>
-                                                                    <div>
-                                                                        <a href={~p"/messages/#{friend.conversation}"}
-                                                                            style="padding: 0.3em 0.6em; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 4px;">Nhắn
-                                                                            tin</a>
-                                                                    </div>
-                                                                </li>
-                                                                <% end %>
-                                                        </ul>
-                                                        <% else %>
-                                                            <p>Bạn chưa có bạn bè nào.</p>
-                                                            <% end %>
+            <!-- Phần hiển thị danh sách bạn bè -->
+            <%= if @friends !=[] do %>
+                <h2>Danh sách bạn bè:</h2>
+                <ul>
+                    <%= for friend <- @friends do %>
+                        <li
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5em;">
+                            <div>
+                                <img src={friend.avatar_url} alt="avatar" class="message-avatar" />
+                                <strong>Email:</strong>
+                                <%= friend.email %> <br>
+                                    <strong>ID:</strong>
+                                    <%= friend.friend_id %>
+                            </div>
+                            <div>
+                                <a href={~p"/messages/#{friend.conversation}"}
+                                    style="padding: 0.3em 0.6em; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 4px;">
+                                    Nhắn tin
+                                </a>
+                            </div>
+                        </li>
+                        <% end %>
+                </ul>
+                <% else %>
+                    <p>Bạn chưa có bạn bè nào.</p>
+                    <% end %>
 
 </body>
 

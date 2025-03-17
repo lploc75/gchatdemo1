@@ -427,7 +427,7 @@ defmodule Gchatdemo1.Accounts do
         where: f.friend_id == ^user_id and f.status == "pending",
         join: u in User,
         on: u.id == f.user_id,
-        select: %{id: f.id, user_id: f.user_id, email: u.email}
+        select: %{id: f.id, user_id: f.user_id, email: u.email, avatar_url: u.avatar_url}
     )
   end
 
@@ -509,7 +509,7 @@ defmodule Gchatdemo1.Accounts do
         on:
           (u.id == f.friend_id and f.user_id == ^user_id) or
             (u.id == f.user_id and f.friend_id == ^user_id),
-        select: %{id: f.id, friend_id: u.id, email: u.email}
+        select: %{id: f.id, friend_id: u.id, email: u.email, avatar_url: u.avatar_url}
     )
   end
 

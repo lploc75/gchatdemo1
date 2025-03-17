@@ -10,32 +10,75 @@
 <body>
     <h1>Danh sách bạn bè</h1>
 
-    <%= if @friends==[] do %>
-        <p>Bạn chưa có bạn bè nào.</p>
-        <% else %>
-            <ul>
-                <%= for friend <- @friends do %>
-                    <li>
-                        <p>Email: <%= friend.email %>
-                        </p>
-                        <p>ID: <%= friend.friend_id %>
-                        </p>
-                        <!-- Thêm nút hủy kết bạn -->
-                        <form action={~p"/unfriend/#{friend.friend_id}"} method="post">
-                            <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()}>
-                            <input type="hidden" name="_method" value="delete">
-                            <button type="submit">Hủy kết bạn</button>
-                        </form>
-                    </li>
-                    <% end %>
-            </ul>
-            <% end %>
+    <!-- Form tìm kiếm bạn bè -->
+    <h2>Tìm kiếm bạn bè</h2>
+    <form action="/friends" method="post">
+        <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()}>
+        <input type="email" name="email" placeholder="Nhập email thành viên" required>
+        <button type="submit">Tìm kiếm</button>
+    </form>
 
-                <!-- Thêm liên kết quay lại -->
-                <a id="Dashboard" href={~p"/dashboard"}
-                    class="inline-block px-6 py-3 bg-blue-500 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition duration-300">
-                    Quay lại Dashboard
-                </a>
+    <!-- Hiển thị kết quả tìm kiếm -->
+    <%= if @searched_user do %>
+        <h2>Thông tin người dùng tìm thấy:</h2>
+        <img src={@searched_user.avatar_url} alt="avatar" class="message-avatar" />
+        <p>Email: <%= @searched_user.email %>
+        </p>
+        <p>ID: <%= @searched_user.id %>
+        </p>
+
+        <%= if @searched_user.id !=@current_user.id do %>
+            <%= case @status do %>
+                <% "pending" -> %>
+                    <form action={~p"/users/#{@searched_user.id}/cancel_request"} method="post">
+                        <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()}>
+                        <button type="submit">Hủy yêu cầu</button>
+                    </form>
+                    <% "accepted" -> %>
+                        <p>Đã là bạn bè</p>
+                        <% nil -> %>
+                            <form action={~p"/users/#{@searched_user.id}/send_request"} method="post">
+                                <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()}>
+                                <button type="submit">Kết bạn</button>
+                            </form>
+                            <% end %>
+                                <% else %>
+                                    <p style="color: red;">(Bạn không thể kết bạn với chính mình)</p>
+                                    <% end %>
+                                        <% end %>
+
+                                            <!-- Danh sách bạn bè -->
+                                            <h2>Danh sách bạn bè</h2>
+                                            <%= if @friends==[] do %>
+                                                <p>Bạn chưa có bạn bè nào.</p>
+                                                <% else %>
+                                                    <ul>
+                                                        <%= for friend <- @friends do %>
+                                                            <li>
+                                                                <img src={friend.avatar_url} alt="avatar"
+                                                                    class="message-avatar" />
+                                                                <p>Email: <%= friend.email %>
+</p>
+                                                                <p>ID: <%= friend.friend_id %>
+                                                                </p>
+                                                                <!-- Nút hủy kết bạn -->
+                                                                <form action={~p"/unfriend/#{friend.friend_id}"}
+                                                                    method="post">
+                                                                    <input type="hidden" name="_csrf_token"
+                                                                        value={Phoenix.Controller.get_csrf_token()}>
+                                                                    <input type="hidden" name="_method" value="delete">
+                                                                    <button type="submit">Hủy kết bạn</button>
+                                                                </form>
+                                                            </li>
+                                                            <% end %>
+                                                    </ul>
+                                                    <% end %>
+
+                                                        <!-- Nút quay lại Dashboard -->
+                                                        <a id="Dashboard" href={~p"/dashboard"}
+                                                            class="inline-block px-6 py-3 bg-blue-500 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition duration-300">
+                                                            Quay lại Dashboard
+                                                        </a>
 
 </body>
 
