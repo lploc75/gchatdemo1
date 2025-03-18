@@ -130,6 +130,17 @@ defmodule Gchatdemo1.Streams do
     )
   end
 
+  def update_stream_setting_for_user(streamer_id, attrs) do
+    Repo.get_by(Gchatdemo1.StreamSetting, streamer_id: streamer_id)
+    |> case do
+      nil -> {:error, "Stream setting not found"}
+      stream_setting ->
+        stream_setting
+        |> Ecto.Changeset.change(attrs)
+        |> Repo.update()
+    end
+  end
+
   def get_all_stream_old do
     Repo.all(
       from s in StreamInfor,
@@ -145,4 +156,6 @@ defmodule Gchatdemo1.Streams do
       select: %{streamer_id: u.id, streamer_name: u.display_name, avatar_url: u.avatar_url}
     )
   end
+
+
 end

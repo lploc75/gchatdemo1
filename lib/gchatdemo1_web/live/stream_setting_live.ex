@@ -7,14 +7,23 @@ defmodule Gchatdemo1Web.StreamSettingLive do
     current_user = Map.get(session, "current_user", %{})
     streamer_id = current_user.id
 
-    {:ok, assign(socket, streamer_id: streamer_id, stream_key: nil), layout: false}
+    stream_setting = get_stream_setting_by_streamer_id(streamer_id)
+
+    {:ok,
+     assign(socket,
+       streamer_id: streamer_id,
+       stream_key: stream_setting && stream_setting.stream_key,
+       title: stream_setting && stream_setting.title,
+       description: stream_setting && stream_setting.description,
+       update_success: nil
+     ), layout: false}
   end
 
   def handle_event("generate_stream_key", _params, socket) do
     stream_key = generate_stream_key()
 
     stream_setting =
-      case get_stream_key_by_streamer_id(socket.assigns.streamer_id) do
+      case get_stream_setting_by_streamer_id(socket.assigns.streamer_id) do
         nil -> create_stream_setting(socket.assigns.streamer_id, stream_key)
         stream_setting -> update_stream_key(stream_setting, stream_key)
       end
@@ -23,21 +32,37 @@ defmodule Gchatdemo1Web.StreamSettingLive do
   end
 
   def handle_event("view_stream_key", _params, socket) do
-    stream_setting = get_stream_key_by_streamer_id(socket.assigns.streamer_id)
+    stream_setting = get_stream_setting_by_streamer_id(socket.assigns.streamer_id)
     stream_key = if stream_setting, do: stream_setting.stream_key, else: "Not Found"
 
     {:noreply, assign(socket, stream_key: stream_key)}
   end
 
-  def handle_event("copy_stream_key", _, socket) do
-    {:noreply, push_event(socket, "copy_stream_key", %{stream_key: socket.assigns.stream_key})}
+  def handle_event(
+        "update_stream_info",
+        %{"title" => title, "description" => description},
+        socket
+      ) do
+    case update_stream_info(socket.assigns.streamer_id, %{title: title, description: description}) do
+      {:ok, updated_setting} ->
+        socket =
+          socket
+          |> assign(title: updated_setting.title, description: updated_setting.description)
+          # Gán trạng thái cập nhật thành công
+          |> assign(:update_success, true)
+
+        {:noreply, push_event(socket, "hide_notification", %{})}
+
+      {:error, _} ->
+        {:noreply, assign(socket, :update_success, false)}
+    end
   end
 
   defp generate_stream_key do
     :crypto.strong_rand_bytes(12) |> Base.encode16() |> binary_part(0, 16)
   end
 
-  defp get_stream_key_by_streamer_id(streamer_id) do
+  defp get_stream_setting_by_streamer_id(streamer_id) do
     Repo.get_by(StreamSetting, streamer_id: streamer_id)
   end
 
@@ -63,10 +88,22 @@ defmodule Gchatdemo1Web.StreamSettingLive do
     end
   end
 
+  defp update_stream_info(streamer_id, attrs) do
+    case get_stream_setting_by_streamer_id(streamer_id) do
+      nil ->
+        {:error, "Stream setting not found"}
+
+      stream_setting ->
+        stream_setting
+        |> Ecto.Changeset.change(attrs)
+        |> Repo.update()
+    end
+  end
+
   def render(assigns) do
     ~H"""
     <div class="max-w-lg mx-auto bg-white shadow-lg rounded-lg p-6">
-      <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Stream Key Management</h2>
+      <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Stream Settings</h2>
 
       <button
         phx-click="generate_stream_key"
@@ -94,7 +131,44 @@ defmodule Gchatdemo1Web.StreamSettingLive do
           </button>
         </div>
       <% end %>
+
+      <div class="mt-6">
+        <h3 class="text-xl font-bold text-gray-800">Update Stream Info</h3>
+        <form phx-submit="update_stream_info">
+          <label class="block mt-3">Title:</label>
+          <input type="text" name="title" value={@title || ""} class="w-full p-2 border rounded" />
+
+          <label class="block mt-3">Description:</label>
+          <textarea name="description" class="w-full p-2 border rounded"><%= @description || "" %></textarea>
+
+          <button
+            type="submit"
+            class="w-full mt-3 bg-purple-500 text-white py-2 rounded hover:bg-purple-600 transition"
+          >
+            Save Changes
+          </button>
+        </form>
+      </div>
     </div>
+    <%= if @update_success do %>
+      <div
+        id="update-notification"
+        class="p-4 mb-4 text-green-800 bg-green-200 border border-green-300 rounded"
+      >
+        Updated successfully!
+      </div>
+    <% end %>
+
+    <script>
+      window.addEventListener("phx:hide_notification", () => {
+      setTimeout(() => {
+        let notification = document.getElementById("update-notification");
+        if (notification) {
+          notification.style.display = "none";
+        }
+      }, 3000); // Ẩn sau 3 giây
+      });
+    </script>
 
     <script>
       window.addEventListener("phx:copy_stream_key", (e) => {
