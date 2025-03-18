@@ -156,4 +156,6 @@ defmodule Gchatdemo1.Streams do
       select: %{streamer_id: u.id, streamer_name: u.display_name, avatar_url: u.avatar_url}
     )
   end
+
+
 end

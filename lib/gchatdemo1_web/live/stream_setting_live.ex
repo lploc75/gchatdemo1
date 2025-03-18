@@ -103,7 +103,7 @@ defmodule Gchatdemo1Web.StreamSettingLive do
   def render(assigns) do
     ~H"""
     <div class="max-w-lg mx-auto bg-white shadow-lg rounded-lg p-6">
-      <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Stream Key và Thông tin stream</h2>
+      <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Stream Key Management</h2>
 
       <button
         phx-click="generate_stream_key"
@@ -131,44 +131,7 @@ defmodule Gchatdemo1Web.StreamSettingLive do
           </button>
         </div>
       <% end %>
-
-      <div class="mt-6">
-        <h3 class="text-xl font-bold text-gray-800">Cập nhật tiêu đề và mô tả</h3>
-        <form phx-submit="update_stream_info">
-          <label class="block mt-3">Tiêu để:</label>
-          <input type="text" name="title" value={@title || ""} class="w-full p-2 border rounded" />
-
-          <label class="block mt-3">Mô tả:</label>
-          <textarea name="description" class="w-full p-2 border rounded"><%= @description || "" %></textarea>
-
-          <button
-            type="submit"
-            class="w-full mt-3 bg-purple-500 text-white py-2 rounded hover:bg-purple-600 transition"
-          >
-            Lưu
-          </button>
-        </form>
-      </div>
     </div>
-    <%= if @update_success do %>
-      <div
-        id="update-notification"
-        class="p-4 mb-4 text-green-800 bg-green-200 border border-green-300 rounded"
-      >
-        Cập nhật thành công!
-      </div>
-    <% end %>
-
-    <script>
-      window.addEventListener("phx:hide_notification", () => {
-      setTimeout(() => {
-        let notification = document.getElementById("update-notification");
-        if (notification) {
-          notification.style.display = "none";
-        }
-      }, 3000); // Ẩn sau 3 giây
-      });
-    </script>
 
     <script>
       window.addEventListener("phx:copy_stream_key", (e) => {
