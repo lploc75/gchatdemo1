@@ -219,6 +219,21 @@ defmodule Gchatdemo1.Chat do
     |> Repo.all()
   end
 
+  # lấy trạng thái của 1 tin nhắn từ nhiều người dùng
+  def get_message_statuses(message_id) do
+    from(ms in MessageStatus,
+      where: ms.message_id == ^message_id,
+      join: u in assoc(ms, :user),
+      select: %{
+        user_id: ms.user_id,
+        status: ms.status,
+        display_name: fragment("COALESCE(?, ?)", u.display_name, u.email),
+        avatar_url: u.avatar_url
+      }
+    )
+    |> Repo.all()
+  end
+
   @doc "Xóa tin nhắn (chỉ user gửi tin nhắn mới có quyền xóa)"
   def delete_message(message_id, user_id) do
     message = Repo.get(Message, message_id)
@@ -537,14 +552,15 @@ defmodule Gchatdemo1.Chat do
             select: m.user_id
         )
 
-      # 3. Tạo danh sách trạng thái tin nhắn cho từng thành viên
+      # 3. Tạo danh sách trạng thái tin nhắn cho từng thành viên trừ người gửi
       status_records =
-        Enum.map(members, fn member_id ->
+        members
+        |> Enum.reject(fn member_id -> member_id == user_id end) # Loại bỏ user_id hiện tại
+        |> Enum.map(fn member_id ->
           %{
             message_id: message.id,
             user_id: member_id,
-            status: if(member_id == user_id, do: "seen", else: "sent"),
-            # Loại bỏ microseconds bằng cách dùng NaiveDateTime.truncate
+            status: "sent", # Chỉ còn trạng thái "sent", không có "seen" cho người gửi
             inserted_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second),
             updated_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
           }

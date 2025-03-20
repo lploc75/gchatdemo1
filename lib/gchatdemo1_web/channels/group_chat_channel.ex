@@ -28,26 +28,12 @@ defmodule Gchatdemo1Web.GroupChatChannel do
     IO.puts("🔥 Received new message")
 
     group_id = socket.assigns.group_id
-    # Lấy email đúng của sender\
-    user = Accounts.get_user!(sender_id)
-    display_name = user.display_name || user.email
     user_email = Accounts.get_user!(sender_id).email
     avatar_url = Accounts.get_user!(sender_id).avatar_url
 
     case Chat.send_message(sender_id, group_id, content, reply_to_id) do
       {:ok, message} ->
-        # 🔹 Preload `message_statuses` để lấy danh sách trạng thái tin nhắn
-        message = Repo.preload(message, [:message_statuses, :user])
-
-        # 🔹 Tạo danh sách trạng thái tin nhắn
-        message_statuses = Enum.map(message.message_statuses, fn status ->
-          %{
-            user_id: status.user_id,
-            status: status.status,
-            display_name: display_name,
-            avatar_url: avatar_url
-          }
-        end)
+        message_statuses = Chat.get_message_statuses(message.id)
 
         broadcast!(socket, "new_message", %{
           message: %{
@@ -55,9 +41,9 @@ defmodule Gchatdemo1Web.GroupChatChannel do
             id: message.id,
             content: message.content,
             reply_to_message: reply_to_message,
-            message_status: message_statuses # ✅ Thêm trạng thái tin nhắn vào payload
+            message_status: message_statuses
           },
-          sender: "me",
+          sender: "me", # gán trước ở đây rồi xử lý ở frontend
           email: user_email,
           avatar_url: avatar_url
         })

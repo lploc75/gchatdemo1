@@ -281,6 +281,38 @@ export class ChatRoom extends LitElement {
       color: #555; /* Màu chữ xám nhẹ */
       font-style: italic;
     }
+    .message-info-modal {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      z-index: 1000;
+    }
+
+    .modal-content {
+      max-width: 300px;
+    }
+
+    .status-list {
+      margin-bottom: 10px;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      margin-top: 5px;
+    }
+
+    .status-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
   `;
 
   static properties = {
@@ -437,7 +469,10 @@ export class ChatRoom extends LitElement {
 
       // Lắng nghe tin nhắn mới từ kênh
       this.channel.on("new_message", async (payload) => {
-        console.log("📩 user_id "+this.userId +" nhận tin nhắn mới:", payload.message);
+        console.log(
+          "📩 user_id " + this.userId + " nhận tin nhắn mới:",
+          payload.message
+        );
         // Kiểm tra xem payload.message có tồn tại và có chứa thuộc tính content không
         if (payload.message && payload.message.content) {
           const newMessage = {
@@ -458,22 +493,25 @@ export class ChatRoom extends LitElement {
           // Thêm tin nhắn mới vào danh sách tin nhắn hiện tại
           newMessage.sender =
             payload.message.user_id === this.userId ? "me" : "other";
-            //  🟢 Nếu tin nhắn từ người khác gửi, đánh dấu là "seen"
+          //  🟢 Nếu tin nhắn từ người khác gửi, đánh dấu là "seen"
           if (newMessage.sender === "other") {
             await this.markSingleMessageAsSeen(newMessage.id);
-            console.log("👀 user_id " + this.userId+ " đã xem tin nhắn:", newMessage.id);
+            console.log(
+              "👀 user_id " + this.userId + " đã xem tin nhắn:",
+              newMessage.id
+            );
             // Cập nhật trạng thái tin nhắn cho frontend
-            newMessage.message_status = newMessage.message_status.map(status =>
-              status.user_id === this.userId
-                ? { ...status, status: "seen" } // Cập nhật trạng thái nếu user_id khớp
-                : status
+            newMessage.message_status = newMessage.message_status.map(
+              (status) =>
+                status.user_id === this.userId
+                  ? { ...status, status: "seen" } // Cập nhật trạng thái nếu user_id khớp
+                  : status
             );
           }
 
           this.messages = [...this.messages, newMessage];
           console.log(this.messages);
           console.log(newMessage);
-          
         } else {
           console.error("❌ Tin nhắn không hợp lệ:", payload.message);
           console.error("❌ Tin nhắn không hợp lệ:", payload.email);
@@ -604,7 +642,11 @@ export class ChatRoom extends LitElement {
 
       if (!res.ok) throw new Error("Không thể cập nhật trạng thái tin nhắn!");
 
-      console.log("👀 Tất cả tin nhắn của user_id "+ this.userId +" đã được đánh dấu là đã xem!");
+      console.log(
+        "👀 Tất cả tin nhắn của user_id " +
+          this.userId +
+          " đã được đánh dấu là đã xem!"
+      );
     } catch (error) {
       console.error("❌ Lỗi khi cập nhật tin nhắn đã xem:", error);
     }
@@ -1234,6 +1276,18 @@ export class ChatRoom extends LitElement {
     this.requestUpdate();
   }
 
+  showMessageInfo(messageId) {
+    this.selectedMessage = this.messages.find((msg) => msg.id === messageId);
+    this.messageInfoVisible = true;
+    this.requestUpdate();
+  }
+
+  closeMessageInfo() {
+    this.messageInfoVisible = false;
+    this.selectedMessage = null;
+    this.requestUpdate();
+  }
+
   // Đóng modal
   closeCreateGroupModal() {
     this.showCreateGroupModal = false;
@@ -1556,6 +1610,12 @@ export class ChatRoom extends LitElement {
                               >
                                 Trả lời tin nhắn
                               </button>
+                              <button
+                                @click="${() =>
+                                  this.showMessageInfo(this.selectedMessageId)}"
+                              >
+                                Thông tin tin nhắn
+                              </button>
                             `
                           : ""}
                         <button
@@ -1573,9 +1633,67 @@ export class ChatRoom extends LitElement {
                         >
                           Trả lời tin nhắn
                         </button>
+                        <button
+                          @click="${() =>
+                            this.showMessageInfo(this.selectedMessageId)}"
+                        >
+                          Thông tin tin nhắn
+                        </button>
                       `}
                 `;
               })()}
+            </div>
+          `
+        : ""}
+      <!-- Modal thông tin tin nhắn -->
+      ${this.messageInfoVisible
+        ? html`
+            <div class="message-info-modal">
+              <div class="modal-content">
+                <h3>Thông tin tin nhắn</h3>
+                <p>
+                  <strong>Nội dung:</strong> ${this.selectedMessage?.content}
+                </p>
+
+                <h4>Đã xem:</h4>
+                <div class="status-list">
+                  ${this.selectedMessage?.message_status
+                    ?.filter((s) => s.status === "seen")
+                    .map(
+                      (s) => html`
+                        <div class="status-item">
+                          <img
+                            class="status-avatar"
+                            src="${s.avatar_url}"
+                            alt="Avatar"
+                          />
+                          <span>${s.display_name}</span> - <small>Đã xem</small>
+                        </div>
+                      `
+                    )}
+                </div>
+
+                <h4>Đã nhận:</h4>
+                <div class="status-list">
+                  ${this.selectedMessage?.message_status
+                    ?.filter((s) => s.status === "sent")
+                    .map(
+                      (s) => html`
+                        <div class="status-item">
+                          <img
+                            class="status-avatar"
+                            src="${s.avatar_url}"
+                            alt="Avatar"
+                          />
+                          <span>${s.display_name}</span> -
+                          <small>Đã nhận</small>
+                        </div>
+                      `
+                    )}
+                </div>
+
+                <button @click="${this.closeMessageInfo}">Đóng</button>
+              </div>
             </div>
           `
         : ""}
