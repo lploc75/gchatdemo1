@@ -397,6 +397,7 @@ export class ChatRoom extends LitElement {
           is_recalled: msg.is_recalled, // Tin nhắn bị thu hồi
           is_edited: msg.is_edited, // Tin nhắn đã sửa
           reply_to_message: msg.reply_to_message,
+          message_status: msg.message_status,
         };
       });
       console.log("✅ Tin nhắn sau khi format:", this.messages);
@@ -422,18 +423,21 @@ export class ChatRoom extends LitElement {
       );
       this.channel
         .join()
-        .receive("ok", () => {
+        .receive("ok", async () => {
+          // ✅ Thêm async ở đây
           console.log(
             `✅ Đã tham gia kênh group_chat:${group.conversation.id}`
           );
+
+          await this.markMessagesAsSeen(); // Đánh dấu tất cả tin nhắn đã xem cho người dùng hiện tại
         })
         .receive("error", (err) => {
           console.error("❌ Lỗi tham gia kênh:", err);
         });
 
       // Lắng nghe tin nhắn mới từ kênh
-      this.channel.on("new_message", (payload) => {
-        console.log("📩 Tin nhắn mới:", payload.message);
+      this.channel.on("new_message", async (payload) => {
+        console.log("📩 user_id "+this.userId +" nhận tin nhắn mới:", payload.message);
         // Kiểm tra xem payload.message có tồn tại và có chứa thuộc tính content không
         if (payload.message && payload.message.content) {
           const newMessage = {
@@ -449,13 +453,27 @@ export class ChatRoom extends LitElement {
                 payload.message.reply_to_message.email)
                 ? payload.message.reply_to_message
                 : null,
+            message_status: payload.message.message_status,
           };
           // Thêm tin nhắn mới vào danh sách tin nhắn hiện tại
           newMessage.sender =
             payload.message.user_id === this.userId ? "me" : "other";
+            //  🟢 Nếu tin nhắn từ người khác gửi, đánh dấu là "seen"
+          if (newMessage.sender === "other") {
+            await this.markSingleMessageAsSeen(newMessage.id);
+            console.log("👀 user_id " + this.userId+ " đã xem tin nhắn:", newMessage.id);
+            // Cập nhật trạng thái tin nhắn cho frontend
+            newMessage.message_status = newMessage.message_status.map(status =>
+              status.user_id === this.userId
+                ? { ...status, status: "seen" } // Cập nhật trạng thái nếu user_id khớp
+                : status
+            );
+          }
+
           this.messages = [...this.messages, newMessage];
           console.log(this.messages);
           console.log(newMessage);
+          
         } else {
           console.error("❌ Tin nhắn không hợp lệ:", payload.message);
           console.error("❌ Tin nhắn không hợp lệ:", payload.email);
@@ -567,6 +585,46 @@ export class ChatRoom extends LitElement {
       console.log(this.groups);
     } catch (error) {
       console.error(error);
+    }
+  }
+
+  // Hàm gọi API để cập nhật trạng thái của tất cả tin nhắn của 1 người dùng
+  async markMessagesAsSeen() {
+    try {
+      const res = await fetch(
+        `/api/messages/conversation/${this.selectedGroup.conversation.id}/mark-seen`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ user_id: this.userId }),
+        }
+      );
+
+      if (!res.ok) throw new Error("Không thể cập nhật trạng thái tin nhắn!");
+
+      console.log("👀 Tất cả tin nhắn của user_id "+ this.userId +" đã được đánh dấu là đã xem!");
+    } catch (error) {
+      console.error("❌ Lỗi khi cập nhật tin nhắn đã xem:", error);
+    }
+  }
+
+  // Hàm gọi API để cập nhật trạng thái của 1 tin nhắn
+  async markSingleMessageAsSeen(messageId) {
+    try {
+      const res = await fetch(`/api/messages/${messageId}/mark-seen`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await res.json();
+      console.log("📌 Phản hồi từ API:", data);
+      if (!res.ok) throw new Error("Không thể cập nhật trạng thái tin nhắn!");
+      console.log(`👀 Tin nhắn ID ${messageId} đã được đánh dấu là đã xem!`);
+    } catch (error) {
+      console.error("❌ Lỗi khi cập nhật tin nhắn đã xem:", error);
     }
   }
 
@@ -748,7 +806,7 @@ export class ChatRoom extends LitElement {
   async getNonGroupFriends(conversationId) {
     try {
       const res = await fetch(
-        `/api/conversations/${conversationId}/available_friends`,
+        `/api/groups/${conversationId}/available_friends`,
         { credentials: "include" }
       );
       if (!res.ok) throw new Error("Không thể tải danh sách bạn bè!");

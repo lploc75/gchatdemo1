@@ -4,7 +4,6 @@ defmodule Gchatdemo1.Repo.Migrations.AddFieldsToMessages do
 
   def change do
     alter table(:messages) do
-      add :status, :string, default: "sent"
       add :file_url, :string
       add :is_forwarded, :boolean, default: false
       add :original_sender_id, references(:users, on_delete: :nothing)  # Tạo khóa ngoại tới bảng users

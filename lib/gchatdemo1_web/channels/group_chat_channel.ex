@@ -2,7 +2,7 @@ defmodule Gchatdemo1Web.GroupChatChannel do
   use Phoenix.Channel
   alias Gchatdemo1.Chat
   alias Gchatdemo1.Accounts
-
+  alias Gchatdemo1.Repo
   def join("group_chat:" <> group_id, _params, socket) do
     # Lấy user_id từ socket
     user_id = socket.assigns[:user_id]
@@ -15,24 +15,49 @@ defmodule Gchatdemo1Web.GroupChatChannel do
     end
   end
 
-  def handle_in("new_message", %{"content" => content,"user_id" => sender_id,"reply_to_id" => reply_to_id,
-                  "reply_to_message" => reply_to_message}, socket) do
+  def handle_in(
+        "new_message",
+        %{
+          "content" => content,
+          "user_id" => sender_id,
+          "reply_to_id" => reply_to_id,
+          "reply_to_message" => reply_to_message
+        },
+        socket
+      ) do
     IO.puts("🔥 Received new message")
 
     group_id = socket.assigns.group_id
-    user_email = Accounts.get_user!(sender_id).email  # Lấy email đúng của sender
+    # Lấy email đúng của sender\
+    user = Accounts.get_user!(sender_id)
+    display_name = user.display_name || user.email
+    user_email = Accounts.get_user!(sender_id).email
     avatar_url = Accounts.get_user!(sender_id).avatar_url
 
     case Chat.send_message(sender_id, group_id, content, reply_to_id) do
       {:ok, message} ->
+        # 🔹 Preload `message_statuses` để lấy danh sách trạng thái tin nhắn
+        message = Repo.preload(message, [:message_statuses, :user])
+
+        # 🔹 Tạo danh sách trạng thái tin nhắn
+        message_statuses = Enum.map(message.message_statuses, fn status ->
+          %{
+            user_id: status.user_id,
+            status: status.status,
+            display_name: display_name,
+            avatar_url: avatar_url
+          }
+        end)
+
         broadcast!(socket, "new_message", %{
           message: %{
             user_id: message.user_id,
             id: message.id,
             content: message.content,
-            reply_to_message: reply_to_message # ✅ Gửi lại đúng như frontend đã gửi
+            reply_to_message: reply_to_message,
+            message_status: message_statuses # ✅ Thêm trạng thái tin nhắn vào payload
           },
-          sender: "me", # Gán trước ở đây, chỉnh sửa sẽ ở phần channel.on
+          sender: "me",
           email: user_email,
           avatar_url: avatar_url
         })
@@ -43,7 +68,6 @@ defmodule Gchatdemo1Web.GroupChatChannel do
         {:reply, {:error, %{status: "failed", reason: inspect(reason)}}, socket}
     end
   end
-
 
   def handle_in("recall_message", %{"message_id" => message_id}, socket) do
     user_id = socket.assigns.user_id
@@ -120,7 +144,12 @@ defmodule Gchatdemo1Web.GroupChatChannel do
 
     case Chat.remove_reaction(message_id, user_id, emoji) do
       {:ok, _} ->
-        broadcast!(socket, "reaction_removed", %{"message_id" => message_id, "user_id" => user_id, "emoji" => emoji})
+        broadcast!(socket, "reaction_removed", %{
+          "message_id" => message_id,
+          "user_id" => user_id,
+          "emoji" => emoji
+        })
+
         {:noreply, socket}
 
       {:error, reason} ->

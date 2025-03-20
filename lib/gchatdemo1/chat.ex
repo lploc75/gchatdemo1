@@ -1,7 +1,7 @@
 defmodule Gchatdemo1.Chat do
   import Ecto.Query, warn: false
   alias Gchatdemo1.Repo
-  alias Gchatdemo1.Chat.{Conversation, GroupMember, Message, Reaction, MessageEdit}
+  alias Gchatdemo1.Chat.{Conversation, GroupMember, Message, MessageStatus, Reaction, MessageEdit}
   alias Gchatdemo1.Accounts.{User, Friendship}
   @doc "Lấy danh sách các nhóm chat mà user tham gia và user_id của admin"
   def list_groups_for_user(user_id) do
@@ -16,21 +16,40 @@ defmodule Gchatdemo1.Chat do
     |> Repo.all()
   end
 
-  @doc "Lấy danh sách tin nhắn của một nhóm chat kèm emoji reactions"
-  # cần lấy thêm is_recalled để hiển thị tin nhắn đã thu hồi
+  # # "Lấy danh sách tin nhắn của một nhóm chat và emoji reactions kèm email và avatar của user"
   # def list_messages(conversation_id, user_id) do
+  #   reactions_query =
+  #     from(r in Reaction,
+  #       where:
+  #         r.message_id in subquery(
+  #           from(m in Message,
+  #             where: m.conversation_id == ^conversation_id,
+  #             select: m.id
+  #           )
+  #         ),
+  #       group_by: [r.message_id, r.emoji],
+  #       select: %{
+  #         message_id: r.message_id,
+  #         emoji: coalesce(r.emoji, "unknown"),
+  #         count: count(r.emoji),
+  #         user_ids: fragment("jsonb_agg(?)", r.user_id)
+  #       }
+  #     )
+
   #   from(m in Message,
-  #     # Join với users
   #     join: u in assoc(m, :user),
-  #     # Join với reactions
-  #     left_join: r in Reaction,
+  #     left_join: r in subquery(reactions_query),
   #     on: r.message_id == m.id,
+  #     # Join vào tin nhắn gốc (reply_to_message) nếu có reply_to_id
+  #     left_join: rm in Message,
+  #     on: m.reply_to_id == rm.id,
+  #     left_join: ru in User,
+  #     # Lấy thông tin người gửi của tin nhắn gốc
+  #     on: rm.user_id == ru.id,
   #     where: m.conversation_id == ^conversation_id,
-  #     # Bỏ qua tin nhắn bị xóa của user_id
   #     where: m.is_deleted == false or m.user_id != ^user_id,
   #     order_by: [asc: m.inserted_at],
-  #     # Nhóm theo tin nhắn
-  #     group_by: [m.id, u.email, u.avatar_url, r.emoji],
+  #     group_by: [m.id, u.email, u.avatar_url, rm.content, ru.email],
   #     select: %{
   #       id: m.id,
   #       user_id: m.user_id,
@@ -40,15 +59,26 @@ defmodule Gchatdemo1.Chat do
   #       is_edited: m.is_edited,
   #       user_email: u.email,
   #       avatar_url: u.avatar_url,
-  #       # Chỉ lấy 1 emoji
-  #       reaction: r.emoji
+  #       reactions:
+  #         fragment(
+  #           "COALESCE(jsonb_object_agg(COALESCE(?, 'unknown'), jsonb_build_object('count', ?, 'users', COALESCE(?, '[]'::jsonb))), '{}')",
+  #           r.emoji,
+  #           r.count,
+  #           r.user_ids
+  #         ),
+  #       reply_to_message:
+  #         fragment(
+  #           "CASE WHEN ? IS NOT NULL THEN jsonb_build_object('email', COALESCE(?, 'Không xác định'), 'content', COALESCE(?, '[Tin nhắn không còn tồn tại]')) ELSE NULL END",
+  #           m.reply_to_id,
+  #           ru.email,
+  #           rm.content
+  #         )
   #     }
   #   )
   #   |> Repo.all()
   # end
-
-  # "Lấy danh sách tin nhắn của một nhóm chat và emoji reactions kèm email và avatar của user"
   def list_messages(conversation_id, user_id) do
+    # ✅ Query gom reactions lại đúng cách
     reactions_query =
       from(r in Reaction,
         where:
@@ -63,7 +93,28 @@ defmodule Gchatdemo1.Chat do
           message_id: r.message_id,
           emoji: coalesce(r.emoji, "unknown"),
           count: count(r.emoji),
-          user_ids: fragment("jsonb_agg(?)", r.user_id)
+          user_ids: fragment("jsonb_agg(DISTINCT ?)", r.user_id)
+        }
+      )
+
+    # ✅ Query gom trạng thái tin nhắn
+    message_status_query =
+      from(ms in MessageStatus,
+        join: u in User,
+        on: ms.user_id == u.id,
+        where:
+          ms.message_id in subquery(
+            from(m in Message,
+              where: m.conversation_id == ^conversation_id,
+              select: m.id
+            )
+          ),
+        select: %{
+          message_id: ms.message_id,
+          user_id: ms.user_id,
+          status: ms.status,
+          avatar_url: u.avatar_url,
+          display_name: coalesce(u.display_name, u.email)
         }
       )
 
@@ -71,11 +122,12 @@ defmodule Gchatdemo1.Chat do
       join: u in assoc(m, :user),
       left_join: r in subquery(reactions_query),
       on: r.message_id == m.id,
-      # Join vào tin nhắn gốc (reply_to_message) nếu có reply_to_id
+      left_join: ms in subquery(message_status_query),
+      on: ms.message_id == m.id,
       left_join: rm in Message,
       on: m.reply_to_id == rm.id,
       left_join: ru in User,
-      on: rm.user_id == ru.id, # Lấy thông tin người gửi của tin nhắn gốc
+      on: rm.user_id == ru.id,
       where: m.conversation_id == ^conversation_id,
       where: m.is_deleted == false or m.user_id != ^user_id,
       order_by: [asc: m.inserted_at],
@@ -89,24 +141,83 @@ defmodule Gchatdemo1.Chat do
         is_edited: m.is_edited,
         user_email: u.email,
         avatar_url: u.avatar_url,
+        # ✅ Fix reactions bị nhân bản
         reactions:
           fragment(
-            "COALESCE(jsonb_object_agg(COALESCE(?, 'unknown'), jsonb_build_object('count', ?, 'users', COALESCE(?, '[]'::jsonb))), '{}')",
+            "COALESCE(jsonb_object_agg(DISTINCT COALESCE(?, 'unknown'), jsonb_build_object('count', ?, 'users', COALESCE(?, '[]'::jsonb))) FILTER (WHERE ? IS NOT NULL), '{}')",
             r.emoji,
             r.count,
-            r.user_ids
+            r.user_ids,
+            r.emoji
           ),
-        reply_to_message: fragment(
-          "CASE WHEN ? IS NOT NULL THEN jsonb_build_object('email', COALESCE(?, 'Không xác định'), 'content', COALESCE(?, '[Tin nhắn không còn tồn tại]')) ELSE NULL END",
-          m.reply_to_id,
-          ru.email,
-          rm.content
-        )
+        # ✅ Fix trạng thái tin nhắn bị nhân bản
+        message_status:
+          fragment(
+            "COALESCE(jsonb_agg(DISTINCT jsonb_build_object('user_id', ?, 'status', ?, 'avatar_url', ?, 'display_name', ?)) FILTER (WHERE ? IS NOT NULL), '[]'::jsonb)",
+            ms.user_id,
+            ms.status,
+            ms.avatar_url,
+            ms.display_name,
+            ms.user_id
+          ),
+        reply_to_message:
+          fragment(
+            "CASE WHEN ? IS NOT NULL THEN jsonb_build_object('email', COALESCE(?, 'Không xác định'), 'content', COALESCE(?, '[Tin nhắn không còn tồn tại]')) ELSE NULL END",
+            m.reply_to_id,
+            ru.email,
+            rm.content
+          )
       }
     )
     |> Repo.all()
   end
 
+  @doc "Đánh dấu tất cả tin nhắn trong nhóm chat là 'seen' cho một user"
+  def mark_messages_as_seen(conversation_id, user_id) do
+    from(ms in MessageStatus,
+      join: m in Message,
+      on: ms.message_id == m.id,
+      where:
+        m.conversation_id == ^conversation_id and ms.user_id == ^user_id and ms.status != "seen",
+      update: [set: [status: "seen"]]
+    )
+    |> Repo.update_all([])
+
+    :ok
+  end
+
+  def mark_single_message_as_seen(message_id, user_id) do
+    case Repo.get_by(MessageStatus, message_id: message_id, user_id: user_id) do
+      nil -> {:error, "Không tìm thấy trạng thái tin nhắn!"}
+      message_status ->
+        changeset = Ecto.Changeset.change(message_status, status: "seen")
+
+        case Repo.update(changeset) do
+          {:ok, _updated_message} -> :ok
+          {:error, changeset} -> {:error, changeset.errors |> Enum.into(%{})}
+        end
+    end
+  end
+
+  @doc "Lấy trạng thái tin nhắn của tất cả tin nhắn trong một nhóm chat"
+  def list_message_statuses_by_conversation(conversation_id) do
+    from(ms in MessageStatus,
+      join: m in Message,
+      on: ms.message_id == m.id,
+      join: u in User,
+      on: ms.user_id == u.id,
+      where: m.conversation_id == ^conversation_id,
+      select: %{
+        message_id: ms.message_id,
+        user_id: ms.user_id,
+        status: ms.status,
+        avatar_url: u.avatar_url,
+        # Nếu display_name NULL thì lấy email
+        display_name: coalesce(u.display_name, u.email)
+      }
+    )
+    |> Repo.all()
+  end
 
   @doc "Xóa tin nhắn (chỉ user gửi tin nhắn mới có quyền xóa)"
   def delete_message(message_id, user_id) do
@@ -392,7 +503,7 @@ defmodule Gchatdemo1.Chat do
     end
   end
 
-  @doc "Gửi tin nhắn vào nhóm"
+  @doc "Gửi tin nhắn vào nhóm và tạo trạng thái tin nhắn"
   def send_message(user_id, conversation_id, content, reply_to_id \\ nil, message_type \\ "text") do
     IO.inspect(
       %{
@@ -405,17 +516,46 @@ defmodule Gchatdemo1.Chat do
       label: "📩 Dữ liệu gửi tin nhắn"
     )
 
-    %Message{}
-    |> Message.changeset(%{
-      user_id: user_id,
-      conversation_id: conversation_id,
-      content: content,
-      message_type: message_type,
-      reply_to_id: reply_to_id
-    })
-    |> Repo.insert()
-  end
+    Repo.transaction(fn ->
+      # 1. Tạo tin nhắn
+      {:ok, message} =
+        %Message{}
+        |> Message.changeset(%{
+          user_id: user_id,
+          conversation_id: conversation_id,
+          content: content,
+          message_type: message_type,
+          reply_to_id: reply_to_id
+        })
+        |> Repo.insert()
 
+      # 2. Lấy danh sách thành viên trong nhóm
+      members =
+        Repo.all(
+          from m in Gchatdemo1.Chat.GroupMember,
+            where: m.conversation_id == ^conversation_id,
+            select: m.user_id
+        )
+
+      # 3. Tạo danh sách trạng thái tin nhắn cho từng thành viên
+      status_records =
+        Enum.map(members, fn member_id ->
+          %{
+            message_id: message.id,
+            user_id: member_id,
+            status: if(member_id == user_id, do: "seen", else: "sent"),
+            # Loại bỏ microseconds bằng cách dùng NaiveDateTime.truncate
+            inserted_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second),
+            updated_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+          }
+        end)
+
+      # 4. Chèn trạng thái tin nhắn vào bảng message_statuses
+      Repo.insert_all(Gchatdemo1.Chat.MessageStatus, status_records)
+
+      message
+    end)
+  end
 
   def get_message(message_id) do
     case Repo.get(Message, message_id) do

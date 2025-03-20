@@ -12,7 +12,6 @@ defmodule Gchatdemo1.Chat.Message do
     field :is_edited, :boolean, default: false
     field :is_recalled, :boolean, default: false
     field :is_deleted, :boolean, default: false
-    field :status, :string, default: "sent"
     field :file_url, :string
     field :is_forwarded, :boolean, default: false
 
@@ -23,6 +22,7 @@ defmodule Gchatdemo1.Chat.Message do
 
     belongs_to :original_sender, Gchatdemo1.Accounts.User, foreign_key: :original_sender_id
     has_many :message_edits, Gchatdemo1.Chat.MessageEdit
+    has_many :message_statuses, Gchatdemo1.Chat.MessageStatus
     has_many :reactions, Gchatdemo1.Chat.Reaction
     timestamps()
   end
@@ -37,7 +37,6 @@ defmodule Gchatdemo1.Chat.Message do
       :is_edited,
       :is_recalled,
       :is_deleted,
-      :status,
       :file_url,
       :is_forwarded,
       :original_sender_id,

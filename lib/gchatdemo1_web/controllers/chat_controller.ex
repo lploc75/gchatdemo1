@@ -14,9 +14,27 @@ defmodule Gchatdemo1Web.ChatController do
 
   def get_messages(conn, %{"conversation_id" => conversation_id}) do
     # Lấy thông tin user từ assigns
-    user = conn.assigns[:current_user]
-    messages = Chat.list_messages(conversation_id, user.id)
+    user_id = conn.assigns[:current_user].id
+    messages = Chat.list_messages(conversation_id, user_id)
     json(conn, messages)
+  end
+
+  @doc "API để cập nhật trạng thái tất cả tin nhắn của một người dùng trong một nhóm thành 'seen'"
+  def mark_messages_as_seen(conn, %{"conversation_id" => conversation_id}) do
+    user_id = conn.assigns[:current_user].id
+    case Chat.mark_messages_as_seen(conversation_id, user_id) do
+      :ok -> json(conn, %{message: "Updated all messages to seen"})
+      _ -> conn |> put_status(:bad_request) |> json(%{error: "Failed to update messages"})
+    end
+  end
+
+  @doc "API để cập nhật trạng thái của một tin nhắn thành 'seen'"
+  def mark_single_message_as_seen(conn, %{"message_id" => message_id}) do
+    user_id = conn.assigns[:current_user].id
+    case Chat.mark_single_message_as_seen(message_id, user_id) do
+      :ok -> json(conn, %{message: "Tin nhắn đã được đánh dấu là đã xem!"})
+      {:error, reason} -> conn |> put_status(:bad_request) |> json(%{error: reason})
+    end
   end
 
   def forward_message(conn, %{"message_id" => message_id, "conversation_id" => conversation_id}) do
