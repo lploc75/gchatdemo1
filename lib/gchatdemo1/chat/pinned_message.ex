@@ -1,7 +1,7 @@
 defmodule Gchatdemo1.Chat.PinnedMessage do
   use Ecto.Schema
   import Ecto.Changeset
-
+  @derive {Jason.Encoder, only: [:id, :message_id, :conversation_id, :pinned_by, :inserted_at, :updated_at]}
   schema "pinned_messages" do
     belongs_to :message, Gchatdemo1.Chat.Message
     belongs_to :conversation, Gchatdemo1.Chat.Conversation

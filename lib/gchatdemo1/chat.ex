@@ -1,7 +1,17 @@
 defmodule Gchatdemo1.Chat do
   import Ecto.Query, warn: false
   alias Gchatdemo1.Repo
-  alias Gchatdemo1.Chat.{Conversation, GroupMember, Message, MessageStatus, Reaction, MessageEdit}
+
+  alias Gchatdemo1.Chat.{
+    Conversation,
+    GroupMember,
+    Message,
+    MessageStatus,
+    Reaction,
+    MessageEdit,
+    PinnedMessage
+  }
+
   alias Gchatdemo1.Accounts.{User, Friendship}
   @doc "Lấy danh sách các nhóm chat mà user tham gia và user_id của admin"
   def list_groups_for_user(user_id) do
@@ -118,59 +128,81 @@ defmodule Gchatdemo1.Chat do
         }
       )
 
-    from(m in Message,
-      join: u in assoc(m, :user),
-      left_join: r in subquery(reactions_query),
-      on: r.message_id == m.id,
-      left_join: ms in subquery(message_status_query),
-      on: ms.message_id == m.id,
-      left_join: rm in Message,
-      on: m.reply_to_id == rm.id,
-      left_join: ru in User,
-      on: rm.user_id == ru.id,
-      where: m.conversation_id == ^conversation_id,
-      where: m.is_deleted == false or m.user_id != ^user_id,
-      order_by: [asc: m.inserted_at],
-      group_by: [m.id, u.email, u.avatar_url, rm.content, ru.email],
-      select: %{
-        id: m.id,
-        user_id: m.user_id,
-        content: m.content,
-        inserted_at: m.inserted_at,
-        is_recalled: m.is_recalled,
-        is_edited: m.is_edited,
-        user_email: u.email,
-        avatar_url: u.avatar_url,
-        # ✅ Fix reactions bị nhân bản
-        reactions:
-          fragment(
-            "COALESCE(jsonb_object_agg(DISTINCT COALESCE(?, 'unknown'), jsonb_build_object('count', ?, 'users', COALESCE(?, '[]'::jsonb))) FILTER (WHERE ? IS NOT NULL), '{}')",
-            r.emoji,
-            r.count,
-            r.user_ids,
-            r.emoji
-          ),
-        # ✅ Fix trạng thái tin nhắn bị nhân bản
-        message_status:
-          fragment(
-            "COALESCE(jsonb_agg(DISTINCT jsonb_build_object('user_id', ?, 'status', ?, 'avatar_url', ?, 'display_name', ?)) FILTER (WHERE ? IS NOT NULL), '[]'::jsonb)",
-            ms.user_id,
-            ms.status,
-            ms.avatar_url,
-            ms.display_name,
-            ms.user_id
-          ),
-        reply_to_message:
-          fragment(
-            "CASE WHEN ? IS NOT NULL THEN jsonb_build_object('email', COALESCE(?, 'Không xác định'), 'content', COALESCE(?, '[Tin nhắn không còn tồn tại]')) ELSE NULL END",
-            m.reply_to_id,
-            ru.email,
-            rm.content
-          )
-      }
-    )
-    |> Repo.all()
+    # ✅ Query lấy tin nhắn ghim
+    pinned_messages_query =
+      from(pm in PinnedMessage,
+        where: pm.conversation_id == ^conversation_id,
+        join: m in assoc(pm, :message),
+        join: u in assoc(m, :user),
+        select: %{
+          id: m.id,
+          user_id: m.user_id,
+          content: m.content,
+          inserted_at: m.inserted_at,
+          user_email: u.email,
+          avatar_url: u.avatar_url
+        }
+      )
+
+    messages =
+      from(m in Message,
+        join: u in assoc(m, :user),
+        left_join: r in subquery(reactions_query),
+        on: r.message_id == m.id,
+        left_join: ms in subquery(message_status_query),
+        on: ms.message_id == m.id,
+        left_join: rm in Message,
+        on: m.reply_to_id == rm.id,
+        left_join: ru in User,
+        on: rm.user_id == ru.id,
+        where: m.conversation_id == ^conversation_id,
+        where: m.is_deleted == false or m.user_id != ^user_id,
+        order_by: [asc: m.inserted_at],
+        group_by: [m.id, u.email, u.avatar_url, rm.content, ru.email],
+        select: %{
+          id: m.id,
+          user_id: m.user_id,
+          content: m.content,
+          inserted_at: m.inserted_at,
+          is_recalled: m.is_recalled,
+          is_edited: m.is_edited,
+          user_email: u.email,
+          avatar_url: u.avatar_url,
+          # ✅ Fix reactions bị nhân bản
+          reactions:
+            fragment(
+              "COALESCE(jsonb_object_agg(DISTINCT COALESCE(?, 'unknown'), jsonb_build_object('count', ?, 'users', COALESCE(?, '[]'::jsonb))) FILTER (WHERE ? IS NOT NULL), '{}')",
+              r.emoji,
+              r.count,
+              r.user_ids,
+              r.emoji
+            ),
+          # ✅ Fix trạng thái tin nhắn bị nhân bản
+          message_status:
+            fragment(
+              "COALESCE(jsonb_agg(DISTINCT jsonb_build_object('user_id', ?, 'status', ?, 'avatar_url', ?, 'display_name', ?)) FILTER (WHERE ? IS NOT NULL), '[]'::jsonb)",
+              ms.user_id,
+              ms.status,
+              ms.avatar_url,
+              ms.display_name,
+              ms.user_id
+            ),
+          reply_to_message:
+            fragment(
+              "CASE WHEN ? IS NOT NULL THEN jsonb_build_object('email', COALESCE(?, 'Không xác định'), 'content', COALESCE(?, '[Tin nhắn không còn tồn tại]')) ELSE NULL END",
+              m.reply_to_id,
+              ru.email,
+              rm.content
+            )
+        }
+      )
+      |> Repo.all()
+
+    pinned_messages = Repo.all(pinned_messages_query) # ✅ Lấy danh sách tin nhắn ghim
+
+    %{messages: messages, pinned_messages: pinned_messages} # ✅ Trả về cả tin nhắn & tin nhắn ghim
   end
+
 
   @doc "Đánh dấu tất cả tin nhắn trong nhóm chat là 'seen' cho một user"
   def mark_messages_as_seen(conversation_id, user_id) do
@@ -188,7 +220,9 @@ defmodule Gchatdemo1.Chat do
 
   def mark_single_message_as_seen(message_id, user_id) do
     case Repo.get_by(MessageStatus, message_id: message_id, user_id: user_id) do
-      nil -> {:error, "Không tìm thấy trạng thái tin nhắn!"}
+      nil ->
+        {:error, "Không tìm thấy trạng thái tin nhắn!"}
+
       message_status ->
         changeset = Ecto.Changeset.change(message_status, status: "seen")
 
@@ -246,6 +280,57 @@ defmodule Gchatdemo1.Chat do
       {:error, "Bạn không có quyền xóa tin nhắn này!"}
     end
   end
+
+  # Ghim tin nhắn
+    def pin_message(attrs) do
+    conversation_id = attrs[:conversation_id]
+    message_id = attrs[:message_id]
+
+    count =
+      from(p in PinnedMessage, where: p.conversation_id == ^conversation_id)
+      |> Repo.aggregate(:count, :id)
+
+    if count >= 3 do
+      {:error, "Chỉ có thể ghim tối đa 3 tin nhắn!"}
+    else
+      Repo.transaction(fn ->
+        # Ghim tin nhắn
+        _ =
+          %PinnedMessage{}
+          |> PinnedMessage.changeset(attrs)
+          |> Repo.insert!()
+
+        # Lấy thông tin đầy đủ của tin nhắn vừa ghim để chuyển về client
+        from(m in Message,
+          where: m.id == ^message_id,
+          join: u in User, on: m.user_id == u.id,
+          select: %{
+            id: m.id,
+            content: m.content,
+            inserted_at: m.inserted_at,
+            user_id: u.id,
+            user_email: u.email,
+            avatar_url: u.avatar_url
+          }
+        )
+        |> Repo.one()
+      end)
+    end
+  end
+
+  # Bỏ ghim tin nhắn
+  def unpin_message(message_id, conversation_id) do
+    PinnedMessage
+    |> where([p], p.message_id == ^message_id and p.conversation_id == ^conversation_id)
+    |> Repo.delete_all()
+  end
+
+  # # Lấy danh sách tin nhắn đã ghim của một cuộc trò chuyện (chưa dùng)
+  # def list_pinned_messages(conversation_id) do
+  #   PinnedMessage
+  #   |> where([p], p.conversation_id == ^conversation_id)
+  #   |> Repo.all()
+  # end
 
   @doc "Tạo hoặc cập nhật reaction (emoji)"
 
@@ -555,12 +640,14 @@ defmodule Gchatdemo1.Chat do
       # 3. Tạo danh sách trạng thái tin nhắn cho từng thành viên trừ người gửi
       status_records =
         members
-        |> Enum.reject(fn member_id -> member_id == user_id end) # Loại bỏ user_id hiện tại
+        # Loại bỏ user_id hiện tại
+        |> Enum.reject(fn member_id -> member_id == user_id end)
         |> Enum.map(fn member_id ->
           %{
             message_id: message.id,
             user_id: member_id,
-            status: "sent", # Chỉ còn trạng thái "sent", không có "seen" cho người gửi
+            # Chỉ còn trạng thái "sent", không có "seen" cho người gửi
+            status: "sent",
             inserted_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second),
             updated_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
           }

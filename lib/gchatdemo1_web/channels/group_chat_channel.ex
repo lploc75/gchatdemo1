@@ -2,7 +2,7 @@ defmodule Gchatdemo1Web.GroupChatChannel do
   use Phoenix.Channel
   alias Gchatdemo1.Chat
   alias Gchatdemo1.Accounts
-  alias Gchatdemo1.Repo
+
   def join("group_chat:" <> group_id, _params, socket) do
     # Lấy user_id từ socket
     user_id = socket.assigns[:user_id]
@@ -43,7 +43,8 @@ defmodule Gchatdemo1Web.GroupChatChannel do
             reply_to_message: reply_to_message,
             message_status: message_statuses
           },
-          sender: "me", # gán trước ở đây rồi xử lý ở frontend
+          # gán trước ở đây rồi xử lý ở client
+          sender: "me",
           email: user_email,
           avatar_url: avatar_url
         })
@@ -143,4 +144,33 @@ defmodule Gchatdemo1Web.GroupChatChannel do
         {:reply, {:error, reason}, socket}
     end
   end
+
+  def handle_in("pin_message", %{"message_id" => message_id, "conversation_id" => conversation_id}, socket) do
+    user_id = socket.assigns.user_id
+
+    case Chat.pin_message(%{
+           message_id: message_id,
+           conversation_id: conversation_id,
+           pinned_by: user_id
+         }) do
+      {:ok, pinned_message} ->
+        broadcast!(socket, "message_pinned", %{message: pinned_message})
+        {:reply, {:ok, pinned_message}, socket}
+
+      {:error, msg} -> # Lỗi (quá 3 tin nhắn ghim)
+        {:reply, {:error, msg}, socket}
+    end
+  end
+
+  def handle_in("unpin_message", %{"message_id" => message_id, "conversation_id" => conversation_id}, socket) do
+    case Chat.unpin_message(message_id, conversation_id) do
+      {count, _} when count > 0 ->
+        broadcast!(socket, "message_unpinned", %{message_id: message_id, conversation_id: conversation_id})
+        {:reply, {:ok, %{message_id: message_id}}, socket}
+
+      _ ->
+        {:reply, {:error, "Không tìm thấy tin nhắn ghim hoặc đã bị xóa!"}, socket}
+    end
+  end
+
 end

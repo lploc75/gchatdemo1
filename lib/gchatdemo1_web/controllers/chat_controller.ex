@@ -12,16 +12,31 @@ defmodule Gchatdemo1Web.ChatController do
     json(conn, groups)
   end
 
+  # def get_messages(conn, %{"conversation_id" => conversation_id}) do
+  #   # Lấy thông tin user từ assigns
+  #   user_id = conn.assigns[:current_user].id
+  #   messages = Chat.list_messages(conversation_id, user_id)
+  #   json(conn, %{messages: messages, pinned_messages: pinned_messages})
+  # end
+
   def get_messages(conn, %{"conversation_id" => conversation_id}) do
-    # Lấy thông tin user từ assigns
     user_id = conn.assigns[:current_user].id
-    messages = Chat.list_messages(conversation_id, user_id)
-    json(conn, messages)
+
+    case Chat.list_messages(conversation_id, user_id) do
+      %{messages: messages, pinned_messages: pinned_messages} ->
+        json(conn, %{messages: messages, pinned_messages: pinned_messages})
+
+      _ ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{error: "Không thể lấy tin nhắn!"})
+    end
   end
 
   @doc "API để cập nhật trạng thái tất cả tin nhắn của một người dùng trong một nhóm thành 'seen'"
   def mark_messages_as_seen(conn, %{"conversation_id" => conversation_id}) do
     user_id = conn.assigns[:current_user].id
+
     case Chat.mark_messages_as_seen(conversation_id, user_id) do
       :ok -> json(conn, %{message: "Updated all messages to seen"})
       _ -> conn |> put_status(:bad_request) |> json(%{error: "Failed to update messages"})
@@ -31,6 +46,7 @@ defmodule Gchatdemo1Web.ChatController do
   @doc "API để cập nhật trạng thái của một tin nhắn thành 'seen'"
   def mark_single_message_as_seen(conn, %{"message_id" => message_id}) do
     user_id = conn.assigns[:current_user].id
+
     case Chat.mark_single_message_as_seen(message_id, user_id) do
       :ok -> json(conn, %{message: "Tin nhắn đã được đánh dấu là đã xem!"})
       {:error, reason} -> conn |> put_status(:bad_request) |> json(%{error: reason})
@@ -50,16 +66,18 @@ defmodule Gchatdemo1Web.ChatController do
         message: %{
           id: new_message.id,
           content: new_message.content,
-          sender: "me",  # Vì user hiện tại đang forward
+          # Vì user hiện tại đang forward
+          sender: "me",
           email: new_message.user.email,
-          reaction: nil  # Giữ nguyên format như danh sách tin nhắn hiện tại
+          # Giữ nguyên format như danh sách tin nhắn hiện tại
+          reaction: nil
         }
       })
     else
-      _ -> conn |> put_status(:unprocessable_entity) |> json(%{error: "Không thể forward tin nhắn"})
+      _ ->
+        conn |> put_status(:unprocessable_entity) |> json(%{error: "Không thể forward tin nhắn"})
     end
   end
-
 
   def search_messages(conn, params) do
     messages = Chat.search_messages(params)

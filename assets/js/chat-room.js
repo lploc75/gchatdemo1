@@ -313,6 +313,36 @@ export class ChatRoom extends LitElement {
       border-radius: 50%;
       margin-right: 8px;
     }
+    /* Phần ghim tin nhắn */
+    .pinned-messages {
+      border-bottom: 2px solid #ddd;
+      padding: 10px;
+      background: #f9f9f9;
+    }
+
+    .pinned-message {
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+
+    .pinned-message img.avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      margin-right: 10px;
+    }
+
+    .pinned-message .message-content {
+      flex-grow: 1;
+    }
+
+    .pinned-message button {
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 16px;
+    }
   `;
 
   static properties = {
@@ -393,7 +423,9 @@ export class ChatRoom extends LitElement {
   async selectGroup(group) {
     this.selectedGroup = group;
     console.log("🚀 Đã chọn nhóm:", group);
-    this.messages = [];
+    this.messages = []; // Danh sách tin nhắn trong nhóm
+    this.pinnedMessages = []; // Danh sách tin nhắn ghim
+
     try {
       const res = await fetch(`/api/messages/${group.conversation.id}`);
       if (!res.ok) throw new Error("Không thể tải tin nhắn!");
@@ -402,37 +434,38 @@ export class ChatRoom extends LitElement {
       console.log("📩 Tin nhắn từ API:", data); // ✅ Kiểm tra dữ liệu API
 
       // Tạo một map để tra cứu tin nhắn theo ID
-      const messageMap = {};
-      data.forEach((msg) => {
-        messageMap[msg.id] = {
-          email: msg.user_email,
-          content: msg.content,
-        };
-      });
+      // const messageMap = {};
+      // data.forEach((msg) => {
+      //   messageMap[msg.id] = {
+      //     email: msg.user_email,
+      //     content: msg.content,
+      //   };
+      // });
+      this.messages = data.messages.map((msg) => ({
+        id: msg.id,
+        user_id: msg.user_id,
+        content: msg.content,
+        sender: msg.user_id === this.userId ? "me" : "other",
+        email: msg.user_email,
+        avatar_url: msg.avatar_url,
+        reaction: msg.reactions
+          ? Object.entries(msg.reactions).map(([emoji, reactionData]) => ({
+              emoji,
+              count: reactionData.count,
+              users: reactionData.users || [],
+            }))
+          : [],
+        is_recalled: msg.is_recalled,
+        is_edited: msg.is_edited,
+        reply_to_message: msg.reply_to_message,
+        message_status: msg.message_status,
+      }));
 
-      this.messages = data.map((msg) => {
-        // console.log(`🧐 Tin nhắn ID: ${msg.id}, user_id: ${msg.user_id}, this.userId: ${this.userId},`);
-        return {
-          id: msg.id, // Thêm ID để nhận diện tin nhắn khi thu hồi
-          user_id: msg.user_id,
-          content: msg.content,
-          sender: msg.user_id === this.userId ? "me" : "other",
-          email: msg.user_email, // Lấy email từ API
-          avatar_url: msg.avatar_url,
-          reaction: msg.reactions
-            ? Object.entries(msg.reactions).map(([emoji, reactionData]) => ({
-                emoji,
-                count: reactionData.count,
-                users: reactionData.users || [], // ✅ Lấy danh sách `user_id` của người thả reaction
-              }))
-            : [], // ✅ Format reactions thành mảng [{ emoji, count, users }]
-          is_recalled: msg.is_recalled, // Tin nhắn bị thu hồi
-          is_edited: msg.is_edited, // Tin nhắn đã sửa
-          reply_to_message: msg.reply_to_message,
-          message_status: msg.message_status,
-        };
-      });
+      // ✅ Thêm tin nhắn ghim
+      this.pinnedMessages = data.pinned_messages || [];
+
       console.log("✅ Tin nhắn sau khi format:", this.messages);
+      console.log("✅ Tin nhắn Ghim:", this.pinnedMessages);
 
       //  Gọi hàm loadMembers để tải danh sách thành viên
       await this.loadMembers(group.conversation.id);
@@ -571,8 +604,6 @@ export class ChatRoom extends LitElement {
 
           return { ...msg, reaction: reactions };
         });
-
-        this.requestUpdate(); // Cập nhật giao diện
       });
 
       // Xóa emoji khỏi tin nhắn từ WebSocket
@@ -593,8 +624,6 @@ export class ChatRoom extends LitElement {
 
           return { ...msg, reaction: updatedReactions };
         });
-
-        this.requestUpdate(); // Cập nhật giao diện
       });
 
       this.channel.on("message_edited", (payload) => {
@@ -609,6 +638,29 @@ export class ChatRoom extends LitElement {
           }
           return msg;
         });
+      });
+      // Ghim tin nhắn
+      this.channel.on("message_pinned", (payload) => {
+        console.log("📌 Tin nhắn được ghim:", payload.message);
+
+        // Kiểm tra xem tin nhắn đã tồn tại trong danh sách ghim chưa
+        const exists = this.pinnedMessages.some(
+          (msg) => msg.id === payload.message.id
+        );
+
+        if (!exists) {
+          this.pinnedMessages.push(payload.message);
+          console.log("📌 Danh sách tin nhắn ghim:", this.pinnedMessages);
+          this.requestUpdate(); // Cập nhật UI
+        }
+      });
+
+      this.channel.on("message_unpinned", (data) => {
+        console.log("📢 Tin nhắn đã bị bỏ ghim:", data);
+        this.pinnedMessages = this.pinnedMessages.filter(
+          (msg) => msg.id !== data.message_id
+        );
+        this.requestUpdate();
       });
     } else {
       console.error("❌ WebSocket chưa được kết nối!");
@@ -831,6 +883,19 @@ export class ChatRoom extends LitElement {
           );
       }
     }
+  }
+
+  pinMessage(messageId) {
+    this.channel.push("pin_message", {
+      message_id: messageId,
+      conversation_id: this.selectedGroup.conversation.id,
+    });
+  }
+  unpinMessage(messageId) {
+    this.channel.push("unpin_message", {
+      message_id: messageId,
+      conversation_id: this.selectedGroup.conversation.id,
+    });
   }
 
   // Phương thức lấy danh sách bạn bè từ API
@@ -1343,6 +1408,35 @@ export class ChatRoom extends LitElement {
           ${this.selectedGroup
             ? html`
                 <h3>Nhóm: ${this.selectedGroup.conversation.name}</h3>
+
+                <div class="pinned-messages">
+                  <h4>📌 Tin nhắn ghim</h4>
+                  <ul>
+                    ${this.pinnedMessages.length > 0
+                      ? this.pinnedMessages.map(
+                          (msg) => html`
+                            <li class="pinned-message">
+                              <img
+                                class="avatar"
+                                src="${msg.avatar_url}"
+                                alt="Avatar"
+                              />
+                              <div class="message-content">
+                                <strong>${msg.user_email}:</strong>
+                                ${msg.content}
+                              </div>
+                              <button
+                                @click="${() => this.unpinMessage(msg.id)}"
+                              >
+                                ❌
+                              </button>
+                            </li>
+                          `
+                        )
+                      : html`<p>Không có tin nhắn ghim.</p>`}
+                  </ul>
+                </div>
+
                 <div class="messages">
                   <div class="search-container">
                     <button class="search-icon" @click="${this.toggleSearch}">
@@ -1616,6 +1710,12 @@ export class ChatRoom extends LitElement {
                               >
                                 Thông tin tin nhắn
                               </button>
+                              <button
+                                @click="${() =>
+                                  this.pinMessage(this.selectedMessageId)}"
+                              >
+                                Ghim tin nhắn
+                              </button>
                             `
                           : ""}
                         <button
@@ -1638,6 +1738,12 @@ export class ChatRoom extends LitElement {
                             this.showMessageInfo(this.selectedMessageId)}"
                         >
                           Thông tin tin nhắn
+                        </button>
+                        <button
+                          @click="${() =>
+                            this.pinMessage(this.selectedMessageId)}"
+                        >
+                          Ghim tin nhắn
                         </button>
                       `}
                 `;
