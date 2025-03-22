@@ -405,6 +405,7 @@ export class ChatRoom extends LitElement {
     }
 
     this.loadGroups();
+    await this.loadFriends();
     document.addEventListener("click", (event) => {
       const contextMenu = this.shadowRoot.querySelector(".context-menu");
       if (contextMenu && !contextMenu.contains(event.target)) {
@@ -901,7 +902,7 @@ export class ChatRoom extends LitElement {
   // Phương thức lấy danh sách bạn bè từ API
   async loadFriends() {
     try {
-      const res = await fetch("/api/friends", { credentials: "include" });
+      const res = await fetch("/api/friends");
       if (!res.ok) throw new Error("Không thể tải danh sách bạn bè!");
       this.friends = await res.json();
       console.log(this.friends);
@@ -1277,7 +1278,7 @@ export class ChatRoom extends LitElement {
   }
   // Mở modal tạo nhóm và load danh sách bạn bè
   async openCreateGroupModal() {
-    await this.loadFriends();
+    console.log("👥 Danh sách bạn bè đã tải:", this.friends);
     this.closeEditGroupModal();
     this.showCreateGroupModal = true;
     this.requestUpdate();
@@ -1814,14 +1815,26 @@ export class ChatRoom extends LitElement {
                   >Chọn nhóm hoặc người nhận:</label
                 >
                 <select id="conversationSelect">
-                  ${this.groups.map(
-                    (group) => html`
-                      <option value="${group.conversation.id}">
-                        ${group.conversation.name}
-                      </option>
-                    `
-                  )}
-                </select>
+  <optgroup label="Nhóm">
+    ${this.groups.map(
+      (group) => html`
+        <option value="${group.conversation.id}">
+          ${group.conversation.name}
+        </option>
+      `
+    )}
+  </optgroup>
+  <optgroup label="Bạn bè">
+    ${this.friends.map(
+      (friend) => html`
+        <option value="${friend.conversation_id}">
+          ${friend.email}
+        </option>
+      `
+    )}
+  </optgroup>
+</select>
+
                 <button @click="${this.confirmShare}">Chia sẻ</button>
                 <button @click="${this.closeShareModal}">Hủy</button>
               </div>

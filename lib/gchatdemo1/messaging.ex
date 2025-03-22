@@ -4,30 +4,40 @@ defmodule Gchatdemo1.Messaging do
   alias Gchatdemo1.Chat.{Message}
   alias Gchatdemo1.Chat.{Reaction}
   alias Gchatdemo1.Chat.{PinnedMessage}
+  alias Gchatdemo1.Chat.CallHistory
+  alias Gchatdemo1.Chat.MessageStatus
   # Gửi tin nhắn
   def send_message(user_id, conversation_id, content, opts \\ %{}) do
-    changeset =
-      Message.changeset(%Message{}, %{
+    Repo.transaction(fn ->
+      # Tạo message như bình thường
+      {:ok, message} =
+        %Message{}
+        |> Message.changeset(%{
+          user_id: user_id,
+          conversation_id: conversation_id,
+          content: content,
+          is_forwarded: opts[:is_forwarded] || false,
+          original_sender_id: opts[:original_sender_id],
+          reply_to_id: opts[:reply_to_id]
+        })
+        |> Repo.insert()
+
+      # Chỉ tạo một bản ghi MessageStatus cho người gửi
+      status = %{
+        message_id: message.id,
         user_id: user_id,
-        conversation_id: conversation_id,
-        content: content,
-        is_forwarded: opts[:is_forwarded] || false,
-        original_sender_id: opts[:original_sender_id] || nil,
-        reply_to_id: opts[:reply_to_id]
-      })
+        status: "sent",
+        inserted_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second),
+        updated_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+      }
 
-    case Repo.insert(changeset) do
-      {:ok, message} ->
-        # Preload user và friend sau khi insert
-        message_with_assoc =
-          message
-          |> Repo.preload([:user, :conversation, :reactions, :original_sender])
+      # Chèn bản ghi trạng thái duy nhất
+      Repo.insert_all(MessageStatus, [status], on_conflict: :nothing)
 
-        {:ok, message_with_assoc}
-
-      {:error, changeset} ->
-        {:error, changeset}
-    end
+      # Trả về message với các association đã preload
+      message
+      |> Repo.preload([:user, :conversation, :reactions, :original_sender, :message_statuses])
+    end)
   end
 
   # Chỉnh sửa tin nhắn
@@ -74,25 +84,46 @@ defmodule Gchatdemo1.Messaging do
     Repo.all(
       from m in Message,
         where: m.conversation_id == ^conversation_id,
-        preload: [:reactions, :user, :conversation],
+        # Thêm message_statuses
+        preload: [:reactions, :user, :conversation, :message_statuses],
         order_by: [asc: m.inserted_at]
     )
   end
 
   # Hỗ trợ cập nhật trạng thái
-  def mark_message_as_delivered(message_id) do
-    Repo.get!(Message, message_id)
-    |> Message.changeset(%{status: "delivered"})
-    |> Repo.update()
+  def mark_message_as_delivered(message_id, user_id) do
+    case Repo.get_by(MessageStatus, message_id: message_id, user_id: user_id) do
+      nil ->
+        Repo.insert(%MessageStatus{
+          message_id: message_id,
+          user_id: user_id,
+          status: "delivered",
+          inserted_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second),
+          updated_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+        })
+
+      status ->
+        Repo.update(MessageStatus.changeset(status, %{status: "delivered"}))
+    end
   end
 
   # Hàm cập nhật tất cả tin nhắn chưa đọc
-  def mark_messages_as_seen(conversation_id, sender_id) do
-    from(m in Message,
-      where:
-        m.conversation_id == ^conversation_id and
-          m.user_id == ^sender_id and
-          m.status != "seen"
+  def mark_messages_as_seen(conversation_id, reader_id) do
+    # Lấy tất cả message IDs chưa seen của conversation
+    message_ids =
+      from(m in Message,
+        join: ms in MessageStatus,
+        on: ms.message_id == m.id,
+        where:
+          m.conversation_id == ^conversation_id and ms.user_id == ^reader_id and
+            ms.status != "seen",
+        select: m.id
+      )
+      |> Repo.all()
+
+    # Cập nhật hàng loạt
+    from(ms in MessageStatus,
+      where: ms.message_id in ^message_ids and ms.user_id == ^reader_id
     )
     |> Repo.update_all(set: [status: "seen"])
   end
@@ -285,5 +316,38 @@ defmodule Gchatdemo1.Messaging do
     )
     |> Repo.all()
     |> Enum.map(& &1.message)
+  end
+
+  def list_call_history(conversation_id) do
+    Repo.all(
+      from ch in Gchatdemo1.Chat.CallHistory,
+        where: ch.conversation_id == ^conversation_id,
+        order_by: [desc: ch.inserted_at],
+        preload: [:caller, :callee]
+    )
+  end
+
+  def create_call_history(
+        conversation_id,
+        caller_id,
+        callee_id,
+        status,
+        started_at \\ nil,
+        ended_at \\ nil
+      ) do
+    duration = if started_at && ended_at, do: NaiveDateTime.diff(ended_at, started_at), else: 0
+
+    %CallHistory{}
+    |> CallHistory.changeset(%{
+      conversation_id: conversation_id,
+      caller_id: caller_id,
+      callee_id: callee_id,
+      status: status,
+      call_type: "video",
+      started_at: started_at,
+      ended_at: ended_at,
+      duration: duration
+    })
+    |> Repo.insert()
   end
 end

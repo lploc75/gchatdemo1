@@ -36,6 +36,13 @@ defmodule Gchatdemo1Web.MessageLive do
           nil
         end
 
+      call_history =
+        if conversation_id do
+          Messaging.list_call_history(conversation_id)
+        else
+          []
+        end
+
       # Nếu conversation là cuộc trò chuyện 1-1 (không group), lấy friend là thành viên khác
       # Trong hàm mount, phần xử lý friend
       friend =
@@ -81,12 +88,23 @@ defmodule Gchatdemo1Web.MessageLive do
           []
         end
 
+      # Gộp messages và call_history thành một danh sách chung
+      combined_items =
+        (messages ++ call_history)
+        |> Enum.sort_by(& &1.inserted_at, :asc)
+
       if connected?(socket) and conversation_id do
         topic = chat_topic(conversation_id)
         # Thêm dòng này
         IO.puts("Subscribing to topic: #{topic}")
         # Subscribe vào topic chat
         Gchatdemo1Web.Endpoint.subscribe(topic)
+        call_topic = "call:#{conversation_id}"
+        # Thêm dòng này
+        Gchatdemo1Web.Endpoint.subscribe(call_topic)
+
+        # Debug log
+        IO.puts("Subscribed to topics: #{topic} and #{call_topic}")
 
         # Sau đó gửi sự kiện đánh dấu tin nhắn là "đã xem" (để bên nhận gửi về bên gửi thông báo)
         send(self(), :mark_messages_as_seen)
@@ -104,7 +122,7 @@ defmodule Gchatdemo1Web.MessageLive do
       {:ok,
        assign(socket,
          current_user: current_user,
-         messages: messages,
+         messages: combined_items,
          conversation_id: conversation_id,
          friend: friend,
          friend_status: friend_status,
@@ -121,7 +139,13 @@ defmodule Gchatdemo1Web.MessageLive do
          # Thêm expanded_messages vào đây
          expanded_messages: %{},
          pinned_messages: pinned_messages,
-         replying_to: nil
+         replying_to: nil,
+         call_state: :idle,
+         local_video: nil,
+         remote_video: nil,
+         call_started_at: nil,
+         status: nil,
+         search_items: messages
        )}
     else
       {:ok, redirect(socket, to: "/")}
@@ -347,7 +371,7 @@ defmodule Gchatdemo1Web.MessageLive do
         # Khi tắt search, reset về danh sách đầy đủ
         assign(socket,
           show_search: false,
-          filtered_messages: socket.assigns.messages
+          filtered_messages: socket.assigns.search_items
         )
         |> clear_flash()
       else
@@ -363,9 +387,9 @@ defmodule Gchatdemo1Web.MessageLive do
 
     filtered_messages =
       if search_text == "" do
-        socket.assigns.messages
+        socket.assigns.search_items
       else
-        Enum.filter(socket.assigns.messages, fn msg ->
+        Enum.filter(socket.assigns.search_items, fn msg ->
           IO.inspect(msg.is_recalled, label: "Search recall")
 
           String.contains?(String.downcase(msg.content), String.downcase(search_text)) and
@@ -377,7 +401,7 @@ defmodule Gchatdemo1Web.MessageLive do
       if search_text != "" and Enum.empty?(filtered_messages) do
         socket
         |> put_flash(:error, "Không tìm thấy tin nhắn!")
-        |> assign(:filtered_messages, socket.assigns.messages)
+        |> assign(:filtered_messages, socket.assigns.search_items)
       else
         socket
         |> clear_flash()
@@ -457,6 +481,123 @@ defmodule Gchatdemo1Web.MessageLive do
     {:noreply, assign(socket, replying_to: nil)}
   end
 
+  def handle_event("start_call", _, socket) do
+    topic = "call:#{socket.assigns.conversation_id}"
+    IO.puts("Subscribing to topic: #{topic}")
+    IO.puts("Call state changed to: calling")
+    Gchatdemo1Web.Endpoint.subscribe(topic)
+
+    {:noreply,
+     socket
+     |> assign(call_state: :calling, is_caller: true)
+     |> push_event("start_call", %{})}
+  end
+
+  def handle_event("user_answer", _params, socket) do
+    now = NaiveDateTime.utc_now()
+
+    updated_socket =
+      socket
+      |> assign(
+        call_state: :in_call,
+        call_started_at: now
+      )
+      |> push_event("accept_call", %{})
+
+    {:noreply, updated_socket}
+  end
+
+  def handle_event("answer", %{"sdp" => sdp, "type" => type}, socket) do
+    conversation_id = socket.assigns.conversation_id
+    topic = "call:#{conversation_id}"
+    Gchatdemo1Web.Endpoint.broadcast!(topic, "answer", %{sdp: sdp, type: type})
+    {:noreply, socket}
+  end
+
+  def handle_event("reject_call", _, socket) do
+    topic = "call:#{socket.assigns.conversation_id}"
+    IO.puts("Call state changed to: idle (call rejected)")
+    Gchatdemo1Web.Endpoint.broadcast!(topic, "call_rejected", %{})
+
+    if socket.assigns.call_state == :awaiting_answer do
+      # Tạo bản ghi lịch sử cuộc gọi
+      {:ok, call_history} =
+        Messaging.create_call_history(
+          socket.assigns.conversation_id,
+          socket.assigns.friend.id,
+          socket.assigns.current_user.id,
+          "rejected"
+        )
+
+      # Preload các mối quan hệ :caller và :callee
+      call_history =
+        Gchatdemo1.Repo.preload(call_history, [:caller, :callee])
+
+      # Broadcast sự kiện new_call_history với dữ liệu đã preload
+      Gchatdemo1Web.Endpoint.broadcast!(topic, "new_call_history", %{call_history: call_history})
+    end
+
+    {:noreply,
+     socket
+     |> assign(call_state: :idle)
+     |> push_event("end_call", %{})}
+  end
+
+  # Xử lý sự kiện "end_call" từ client
+  def handle_event("end_call", _, socket) do
+    topic = "call:#{socket.assigns.conversation_id}"
+    IO.puts("Broadcasting call_ended to topic: #{topic}")
+    Gchatdemo1Web.Endpoint.broadcast!(topic, "call_ended", %{})
+
+    # Ghi log cuộc gọi thành công
+    if socket.assigns.call_state == :in_call do
+      started_at = socket.assigns.call_started_at
+      ended_at = NaiveDateTime.utc_now()
+
+      # Tạo bản ghi lịch sử cuộc gọi
+      {:ok, call_history} =
+        Messaging.create_call_history(
+          socket.assigns.conversation_id,
+          socket.assigns.current_user.id,
+          socket.assigns.friend.id,
+          "answered",
+          started_at,
+          ended_at
+        )
+
+      # Preload các mối quan hệ :caller và :callee
+      call_history =
+        Gchatdemo1.Repo.preload(call_history, [:caller, :callee])
+
+      # Broadcast sự kiện new_call_history với dữ liệu đã preload
+      Gchatdemo1Web.Endpoint.broadcast!(topic, "new_call_history", %{call_history: call_history})
+    end
+
+    {:noreply,
+     socket
+     |> assign(call_state: :idle)
+     |> push_event("end_call", %{})}
+  end
+
+  def handle_event("offer", %{"sdp" => sdp, "type" => type}, socket) do
+    conversation_id = socket.assigns.conversation_id
+    topic = "call:#{conversation_id}"
+    IO.puts("Broadcasting offer to topic: #{topic}")
+    IO.inspect(%{sdp: sdp, type: type}, label: "Offer payload")
+    Gchatdemo1Web.Endpoint.broadcast!(topic, "offer", %{sdp: sdp, type: type})
+    {:noreply, socket}
+  end
+
+  # Xử lý candidate
+  def handle_event("candidate", %{"candidate" => candidate}, socket) do
+    conversation_id = socket.assigns.conversation_id
+    topic = "call:#{conversation_id}"
+
+    Gchatdemo1Web.Endpoint.broadcast_from!(self(), topic, "candidate", %{candidate: candidate})
+
+    {:noreply, socket}
+  end
+
   # Xử lý sự kiện tin nhắn đã được nhận
   def handle_info(%{event: "message_delivered", payload: %{message_id: message_id}}, socket) do
     current_user_id = socket.assigns.current_user.id
@@ -514,10 +655,22 @@ defmodule Gchatdemo1Web.MessageLive do
       updated_messages =
         socket.assigns.messages
         |> Enum.map(fn msg ->
-          # Cập nhật trạng thái "seen" cho tin nhắn của current user
-          if msg.user_id == socket.assigns.current_user.id do
-            %{msg | status: "seen"}
+          # Kiểm tra xem msg có phải là tin nhắn (có :user_id) hay không
+          if Map.has_key?(msg, :user_id) do
+            # Cập nhật trạng thái "seen" trong bảng message_statuses
+            updated_statuses =
+              Enum.map(msg.message_statuses, fn status ->
+                if status.user_id == socket.assigns.current_user.id do
+                  %{status | status: "seen"}
+                else
+                  status
+                end
+              end)
+
+            # Cập nhật message với message_statuses mới
+            %{msg | message_statuses: updated_statuses}
           else
+            # Nếu là lịch sử cuộc gọi (CallHistory), giữ nguyên
             msg
           end
         end)
@@ -636,6 +789,86 @@ defmodule Gchatdemo1Web.MessageLive do
     {:noreply, assign(socket, pinned_messages: pinned_messages)}
   end
 
+  def handle_info(%{event: "offer", payload: offer}, socket) do
+    IO.inspect(offer, label: "Offer received")
+
+    if socket.assigns.call_state == :idle do
+      {:noreply,
+       socket
+       |> assign(call_state: :awaiting_answer, is_caller: false)
+       |> push_event("handle_offer", offer)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(%{event: "call_rejected"}, socket) do
+    {:noreply,
+     socket
+     |> assign(call_state: :idle)
+     |> put_flash(:info, "Cuộc gọi đã bị từ chối")
+     |> push_event("end_call", %{})}
+  end
+
+  def handle_info(%{event: "answer", payload: answer}, socket) do
+    IO.puts(
+      "Received answer broadcast, current call_state: #{socket.assigns.call_state}, socket: #{socket.id}"
+    )
+
+    if socket.assigns.call_state == :calling do
+      IO.puts("Pushing handle_answer to client #{socket.id} with payload: #{inspect(answer)}")
+
+      {:noreply,
+       socket
+       |> assign(call_state: :in_call)
+       |> push_event("handle_answer", answer)}
+    else
+      IO.puts("Ignoring answer, call_state is not :calling for socket: #{socket.id}")
+      {:noreply, socket}
+    end
+  end
+
+  # Xử lý broadcast "call_ended" cho tất cả socket trong topic
+  def handle_info(%{event: "call_ended", payload: _payload}, socket) do
+    IO.puts("Received call_ended broadcast, socket: #{socket.id}")
+
+    {:noreply,
+     socket
+     |> assign(call_state: :idle)
+     |> push_event("end_call", %{})}
+  end
+
+  # Sửa lại phần handle candidate trong Phoenix LiveView
+  def handle_info(%{event: "candidate", payload: candidate}, socket) do
+    # Thêm debug log để kiểm tra candidate nhận được
+    IO.inspect(candidate, label: "Nhận candidate từ channel")
+    {:noreply, push_event(socket, "handle_candidate", candidate)}
+  end
+
+  def handle_info(%{event: "new_call_history", payload: %{call_history: call_history}}, socket) do
+    # Kiểm tra xem call_history đã tồn tại trong messages chưa dựa trên id
+    already_exists? =
+      Enum.any?(socket.assigns.messages, fn item ->
+        # Chỉ kiểm tra với các bản ghi CallHistory (có field :call_type)
+        Map.get(item, :id) == call_history.id and Map.has_key?(item, :call_type)
+      end)
+
+    # Chỉ cập nhật messages nếu bản ghi chưa tồn tại
+    socket =
+      if already_exists? do
+        # Không làm gì nếu đã tồn tại
+        socket
+      else
+        updated_messages =
+          (socket.assigns.messages ++ [call_history])
+          |> Enum.sort_by(& &1.inserted_at, :asc)
+
+        assign(socket, messages: updated_messages)
+      end
+
+    {:noreply, socket}
+  end
+
   # Hàm render hiển thị giao diện chat
   def render(assigns) do
     ~H"""
@@ -672,6 +905,33 @@ defmodule Gchatdemo1Web.MessageLive do
           </div>
         <% end %>
       </div>
+
+      <div id="video-container" phx-hook="WebRTC">
+        <!-- Trong template của cả caller và receiver -->
+        <!-- Thêm muted và playsinline -->
+        <video id="remote-video" autoplay playsinline></video>
+        <video id="local-video" autoplay playsinline muted></video>
+      </div>
+
+      <div class="call-controls">
+        <%= case @call_state do %>
+          <% :idle -> %>
+            <button phx-click="start_call">Gọi video</button>
+          <% :calling -> %>
+            <div class="calling-overlay">
+              <p>Đang gọi...</p>
+               <button phx-click="end_call">Hủy</button>
+            </div>
+          <% :awaiting_answer -> %>
+            <div class="incoming-call-overlay">
+              <p>Cuộc gọi đến từ {@friend.email}</p>
+               <button phx-click="user_answer">Trả lời</button>
+              <button phx-click="reject_call">Từ chối</button>
+            </div>
+          <% :in_call -> %>
+            <button phx-click="end_call">Kết thúc</button>
+        <% end %>
+      </div>
       <!-- Phần hiển thị tin nhắn đã ghim -->
       <div class="pinned-messages-section">
         <h3>📌 Tin nhắn đã ghim</h3>
@@ -695,292 +955,326 @@ defmodule Gchatdemo1Web.MessageLive do
       </div>
 
       <div id="chat-messages">
-        <%= for message <- (if @search_query != "" do
-      Enum.filter(@messages, fn msg ->
-        String.contains?(String.downcase(msg.content), String.downcase(@search_query)) and not msg.is_recalled
-      end)
+        <%= for item <- (if @search_query != "" do
+    Enum.filter(@search_items, fn item ->
+      if Map.has_key?(item, :content) do
+        # Lọc tin nhắn dựa trên nội dung và không bị thu hồi
+        String.contains?(String.downcase(item.content), String.downcase(@search_query)) and not item.is_recalled
+      else
+        # Không lọc cuộc gọi (hoặc có thể thêm logic lọc cuộc gọi nếu muốn)
+        false
+      end
+    end)
     else
-      @messages
+    @messages
     end) do %>
-          <% message_class =
-            if message.user_id == @current_user.id, do: "message-right", else: "message-left" %>
-          <!-- Nếu tin nhắn đến từ người khác, hiển thị avatar -->
-          <%= if message.user_id != @current_user.id and message.user.avatar_url do %>
-            <div class="message-avatar-container">
-              <img src={message.user.avatar_url} alt="avatar" class="message-avatar" />
-            </div>
-          <% end %>
-
-          <div class="message-container" id={"message-#{message.id}"}>
-            <!-- Menu "..." bên trái tin nhắn (chỉ cho tin nhắn của người gửi) -->
-            <%= if message.user_id == @current_user.id do %>
-              <div class="message-actions">
-                <div class="dropdown">
-                  <button class="dropdown-toggle" type="button">...</button>
-                  <div class="dropdown-menu">
-                    <%= if message.is_recalled do %>
-                      <button
-                        type="button"
-                        phx-click="delete_message"
-                        phx-value-message_id={message.id}
-                      >
-                        Xóa tin nhắn
-                      </button>
-                    <% else %>
-                      <%= if message.is_forwarded do %>
-                        <!-- Nếu tin nhắn đã chuyển tiếp, chỉ cho phép xóa và chuyển tiếp -->
+          <%= if Map.has_key?(item, :content) do %>
+            <!-- Hiển thị tin nhắn -->
+            <% message = item %> <% message_class =
+              if message.user_id == @current_user.id, do: "message-right", else: "message-left" %>
+            <!-- Nếu tin nhắn đến từ người khác, hiển thị avatar -->
+            <%= if message.user_id != @current_user.id and message.user.avatar_url do %>
+              <div class="message-avatar-container">
+                <img src={message.user.avatar_url} alt="avatar" class="message-avatar" />
+              </div>
+            <% end %>
+            <!-- Container cho tin nhắn -->
+            <div class="message-container" id={"message-#{message.id}"}>
+              <!-- Menu "..." bên trái tin nhắn (chỉ cho tin nhắn của người gửi) -->
+              <%= if message.user_id == @current_user.id do %>
+                <div class="message-actions">
+                  <div class="dropdown">
+                    <button class="dropdown-toggle" type="button">...</button>
+                    <div class="dropdown-menu">
+                      <%= if message.is_recalled do %>
                         <button
                           type="button"
                           phx-click="delete_message"
                           phx-value-message_id={message.id}
                         >
                           Xóa tin nhắn
-                        </button>
-
-                        <button
-                          type="button"
-                          phx-click="open_forward_modal"
-                          phx-value-message_id={message.id}
-                        >
-                          Chuyển tiếp
-                        </button>
-
-                        <button
-                          type="button"
-                          phx-click="start_reply"
-                          phx-value-message_id={message.id}
-                        >
-                          Trả lời
                         </button>
                       <% else %>
-                        <!-- Nếu tin nhắn chưa chuyển tiếp, cho phép thu hồi, chỉnh sửa, xóa và chuyển tiếp -->
-                        <button
-                          type="button"
-                          phx-click="recall_message"
-                          phx-value-message_id={message.id}
-                        >
-                          Thu hồi
-                        </button>
+                        <%= if message.is_forwarded do %>
+                          <!-- Nếu tin nhắn đã chuyển tiếp -->
+                          <button
+                            type="button"
+                            phx-click="delete_message"
+                            phx-value-message_id={message.id}
+                          >
+                            Xóa tin nhắn
+                          </button>
 
-                        <button
-                          type="button"
-                          phx-click={show_modal("edit-message-modal-#{message.id}")}
-                        >
-                          Chỉnh sửa
-                        </button>
+                          <button
+                            type="button"
+                            phx-click="open_forward_modal"
+                            phx-value-message_id={message.id}
+                          >
+                            Chuyển tiếp
+                          </button>
 
-                        <button
-                          type="button"
-                          phx-click="delete_message"
-                          phx-value-message_id={message.id}
-                        >
-                          Xóa tin nhắn
-                        </button>
+                          <button
+                            type="button"
+                            phx-click="start_reply"
+                            phx-value-message_id={message.id}
+                          >
+                            Trả lời
+                          </button>
+                        <% else %>
+                          <!-- Nếu tin nhắn chưa chuyển tiếp -->
+                          <button
+                            type="button"
+                            phx-click="recall_message"
+                            phx-value-message_id={message.id}
+                          >
+                            Thu hồi
+                          </button>
 
-                        <button
-                          type="button"
-                          phx-click="open_forward_modal"
-                          phx-value-message_id={message.id}
-                        >
-                          Chuyển tiếp
-                        </button>
+                          <button
+                            type="button"
+                            phx-click={show_modal("edit-message-modal-#{message.id}")}
+                          >
+                            Chỉnh sửa
+                          </button>
 
-                        <button
-                          type="button"
-                          phx-click="start_reply"
-                          phx-value-message_id={message.id}
-                        >
-                          Trả lời
-                        </button>
+                          <button
+                            type="button"
+                            phx-click="delete_message"
+                            phx-value-message_id={message.id}
+                          >
+                            Xóa tin nhắn
+                          </button>
+
+                          <button
+                            type="button"
+                            phx-click="open_forward_modal"
+                            phx-value-message_id={message.id}
+                          >
+                            Chuyển tiếp
+                          </button>
+
+                          <button
+                            type="button"
+                            phx-click="start_reply"
+                            phx-value-message_id={message.id}
+                          >
+                            Trả lời
+                          </button>
+                        <% end %>
                       <% end %>
-                    <% end %>
+                    </div>
                   </div>
                 </div>
-              </div>
-            <% end %>
+              <% end %>
 
-            <%= if message.user_id != @current_user.id do %>
-              <div class="message-actions">
-                <div class="dropdown">
-                  <button class="dropdown-toggle" type="button">...</button>
-                  <div class="dropdown-menu">
-                    <button
-                      type="button"
-                      phx-click="open_forward_modal"
-                      phx-value-message_id={message.id}
-                    >
-                      Chuyển tiếp
-                    </button>
+    <!-- Menu "..." cho tin nhắn của người nhận -->
+              <%= if message.user_id != @current_user.id do %>
+                <div class="message-actions">
+                  <div class="dropdown">
+                    <button class="dropdown-toggle" type="button">...</button>
+                    <div class="dropdown-menu">
+                      <button
+                        type="button"
+                        phx-click="open_forward_modal"
+                        phx-value-message_id={message.id}
+                      >
+                        Chuyển tiếp
+                      </button>
 
-                    <button type="button" phx-click="start_reply" phx-value-message_id={message.id}>
-                      Trả lời
-                    </button>
+                      <button type="button" phx-click="start_reply" phx-value-message_id={message.id}>
+                        Trả lời
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            <% end %>
+              <% end %>
 
     <!-- Nội dung tin nhắn -->
-            <div class={"message #{message_class}"} title={format_time(message.inserted_at)}>
-              <!-- Hiển thị thông tin chuyển tiếp -->
-              <%= if message.is_forwarded do %>
-                <div class="forwarded-message-header">
-                  {Accounts.get_user(message.user_id).email} đã chuyển tiếp một tin nhắn
-                </div>
-              <% end %>
-              <!-- Nếu tin nhắn là trả lời, hiển thị thông tin của tin nhắn gốc -->
-              <%= if message.reply_to_id do %>
-                <% reply_to = Messaging.get_message(message.reply_to_id) %>
-                <div class="reply-content">
-                  <strong>Trả lời {reply_to.user.email}:</strong>
-                  <p>{truncate(reply_to.content, length: 100)}</p>
-                </div>
-              <% end %>
+              <div class={"message #{message_class}"} title={format_time(message.inserted_at)}>
+                <!-- Hiển thị thông tin chuyển tiếp -->
+                <%= if message.is_forwarded do %>
+                  <div class="forwarded-message-header">
+                    {Accounts.get_user(message.user_id).email} đã chuyển tiếp một tin nhắn
+                  </div>
+                <% end %>
+                <!-- Nếu tin nhắn là trả lời -->
+                <%= if message.reply_to_id do %>
+                  <% reply_to = Messaging.get_message(message.reply_to_id) %>
+                  <div class="reply-content">
+                    <strong>Trả lời {reply_to.user.email}:</strong>
+                    <p>{truncate(reply_to.content, length: 100)}</p>
+                  </div>
+                <% end %>
 
-              <div class="message-content">
-                <strong>{message.user.email}:</strong>
-                <p class={"truncate-message #{if @expanded_messages[message.id], do: "expanded"}"}>
-                  <%= if message.is_recalled do %>
-                    <em>Tin nhắn đã được thu hồi</em>
-                  <% else %>
-                    {message.content}
-                    <%= if message.is_edited do %>
-                      <span class="edited-label">(đã chỉnh sửa)</span>
+                <div class="message-content">
+                  <strong>{message.user.email}:</strong>
+                  <p class={"truncate-message #{if @expanded_messages[message.id], do: "expanded"}"}>
+                    <%= if message.is_recalled do %>
+                      <em>Tin nhắn đã được thu hồi</em>
+                    <% else %>
+                      {message.content}
+                      <%= if message.is_edited do %>
+                        <span class="edited-label">(đã chỉnh sửa)</span>
+                      <% end %>
                     <% end %>
-                  <% end %>
-                </p>
+                  </p>
 
-                <%= if String.length(message.content) > 150 do %>
-                  <button
-                    phx-click="toggle_expand"
-                    phx-value-message_id={message.id}
-                    class="expand-button"
-                  >
-                    {if @expanded_messages[message.id], do: "Thu gọn", else: "Xem thêm"}
-                  </button>
+                  <%= if String.length(message.content) > 150 do %>
+                    <button
+                      phx-click="toggle_expand"
+                      phx-value-message_id={message.id}
+                      class="expand-button"
+                    >
+                      {if @expanded_messages[message.id], do: "Thu gọn", else: "Xem thêm"}
+                    </button>
+                  <% end %>
+                </div>
+
+    <!-- Nút Ghim/Gỡ ghim -->
+                <%= if not message.is_recalled do %>
+                  <%= if Enum.any?(@pinned_messages, fn m -> m.id == message.id end) do %>
+                    <button
+                      phx-click="unpin_message"
+                      phx-value-message_id={message.id}
+                      class="unpin-btn"
+                    >
+                      🗑️ Gỡ ghim
+                    </button>
+                  <% else %>
+                    <button phx-click="pin_message" phx-value-message_id={message.id} class="pin-btn">
+                      📌 Ghim
+                    </button>
+                  <% end %>
                 <% end %>
-              </div>
-              <!-- Nút Ghim/Gỡ ghim của từng tin nhắn -->
-              <%= if not message.is_recalled do %>
-                <%= if Enum.any?(@pinned_messages, fn m -> m.id == message.id end) do %>
-                  <button
-                    phx-click="unpin_message"
-                    phx-value-message_id={message.id}
-                    class="unpin-btn"
-                  >
-                    🗑️ Gỡ ghim
-                  </button>
-                <% else %>
-                  <button phx-click="pin_message" phx-value-message_id={message.id} class="pin-btn">
-                    📌 Ghim
-                  </button>
-                <% end %>
-              <% end %>
 
     <!-- Hiển thị reactions -->
-              <div class="message-reactions">
-                <%= for reaction <- message.reactions do %>
-                  <span class="emoji-reaction">
-                    <%= case reaction.emoji do %>
-                      <% "👍" -> %>
-                        👍
-                      <% "❤️" -> %>
-                        ❤️
-                      <% "😄" -> %>
-                        😄
-                      <% "😠" -> %>
-                        😠
-                      <% "😲" -> %>
-                        😲
-                    <% end %>
-                  </span>
-                <% end %>
-              </div>
+                <div class="message-reactions">
+                  <%= for reaction <- message.reactions do %>
+                    <span class="emoji-reaction">
+                      <%= case reaction.emoji do %>
+                        <% "👍" -> %>
+                          👍
+                        <% "❤️" -> %>
+                          ❤️
+                        <% "😄" -> %>
+                          😄
+                        <% "😠" -> %>
+                          😠
+                        <% "😲" -> %>
+                          😲
+                      <% end %>
+                    </span>
+                  <% end %>
+                </div>
 
     <!-- Emoji picker -->
-              <div class="emoji-actions">
-                <button
-                  phx-click="toggle_emoji_picker"
-                  phx-value-message_id={message.id}
-                  class="emoji-trigger"
-                >
-                  😀
-                </button>
+                <div class="emoji-actions">
+                  <button
+                    phx-click="toggle_emoji_picker"
+                    phx-value-message_id={message.id}
+                    class="emoji-trigger"
+                  >
+                    😀
+                  </button>
 
-                <%= if @show_emoji_picker == message.id do %>
-                  <div class="emoji-picker">
-                    <button
-                      phx-click="react_to_message"
-                      phx-value-message_id={message.id}
-                      phx-value-emoji="👍"
-                    >
-                      👍
-                    </button>
+                  <%= if @show_emoji_picker == message.id do %>
+                    <div class="emoji-picker">
+                      <button
+                        phx-click="react_to_message"
+                        phx-value-message_id={message.id}
+                        phx-value-emoji="👍"
+                      >
+                        👍
+                      </button>
 
-                    <button
-                      phx-click="react_to_message"
-                      phx-value-message_id={message.id}
-                      phx-value-emoji="❤️"
-                    >
-                      ❤️
-                    </button>
+                      <button
+                        phx-click="react_to_message"
+                        phx-value-message_id={message.id}
+                        phx-value-emoji="❤️"
+                      >
+                        ❤️
+                      </button>
 
-                    <button
-                      phx-click="react_to_message"
-                      phx-value-message_id={message.id}
-                      phx-value-emoji="😄"
-                    >
-                      😄
-                    </button>
+                      <button
+                        phx-click="react_to_message"
+                        phx-value-message_id={message.id}
+                        phx-value-emoji="😄"
+                      >
+                        😄
+                      </button>
 
-                    <button
-                      phx-click="react_to_message"
-                      phx-value-message_id={message.id}
-                      phx-value-emoji="😠"
-                    >
-                      😠
-                    </button>
+                      <button
+                        phx-click="react_to_message"
+                        phx-value-message_id={message.id}
+                        phx-value-emoji="😠"
+                      >
+                        😠
+                      </button>
 
-                    <button
-                      phx-click="react_to_message"
-                      phx-value-message_id={message.id}
-                      phx-value-emoji="😲"
-                    >
-                      😲
-                    </button>
+                      <button
+                        phx-click="react_to_message"
+                        phx-value-message_id={message.id}
+                        phx-value-emoji="😲"
+                      >
+                        😲
+                      </button>
+                    </div>
+                  <% end %>
+                </div>
+
+    <!-- Hiển thị trạng thái tin nhắn (chỉ cho tin nhắn cuối cùng) -->
+                <%= if message.user_id == @current_user.id and is_last_message?(message, @messages) do %>
+                  <div class="message-status">
+                    <% status =
+                      Enum.find(message.message_statuses, &(&1.user_id == @current_user.id)).status %>
+                    <%= if status == "sent" do %>
+                      📤 đã gửi
+                    <% end %>
+
+                    <%= if status == "delivered" do %>
+                      📬 đã nhận
+                    <% end %>
+
+                    <%= if status == "seen" do %>
+                      👀 đã xem
+                    <% end %>
                   </div>
                 <% end %>
               </div>
 
-    <!-- Hiển thị trạng thái tin nhắn (chỉ cho tin nhắn cuối cùng) -->
-              <%= if message.user_id == @current_user.id and is_last_message?(message, @messages) do %>
-                <div class="message-status">
-                  <%= case message.status do %>
-                    <% "sent" -> %>
-                      <span class="status">📤 Đã gửi</span>
-                    <% "delivered" -> %>
-                      <span class="status">📬 Đã nhận</span>
-                    <% "seen" -> %>
-                      <span class="status">👀 Đã xem</span>
-                  <% end %>
-                </div>
+    <!-- Modal chỉnh sửa tin nhắn -->
+              <.modal id={"edit-message-modal-#{message.id}"}>
+                <h2>Chỉnh sửa tin nhắn</h2>
+
+                <form phx-submit="edit_message">
+                  <input type="hidden" name="message_id" value={message.id} /> <textarea name="content"><%= message.content %></textarea>
+                  <button type="submit">Lưu</button>
+                </form>
+              </.modal>
+            </div>
+          <% else %>
+            <!-- Hiển thị lịch sử cuộc gọi -->
+            <% call = item %>
+            <div class="system-message">
+              <%= case call.status do %>
+                <% "rejected" -> %>
+                  <p>
+                    📞 {call.callee.email} đã từ chối cuộc gọi video - {format_time(call.inserted_at)}
+                  </p>
+                <% "answered" -> %>
+                  <p>
+                    📞 Cuộc gọi video đã kết thúc ({div(call.duration, 60)}:{rem(call.duration, 60)
+                    |> Integer.to_string()
+                    |> String.pad_leading(2, "0")}) - {format_time(call.inserted_at)}
+                  </p>
+                <% "missed" -> %>
+                  <p>📞 Cuộc gọi nhỡ - {format_time(call.inserted_at)}</p>
               <% end %>
             </div>
-
-    <!-- Modal chỉnh sửa tin nhắn -->
-            <.modal id={"edit-message-modal-#{message.id}"}>
-              <h2>Chỉnh sửa tin nhắn</h2>
-
-              <form phx-submit="edit_message">
-                <input type="hidden" name="message_id" value={message.id} /> <textarea name="content"><%= message.content %></textarea>
-                <button type="submit">Lưu</button>
-              </form>
-            </.modal>
-          </div>
+          <% end %>
         <% end %>
       </div>
-
-    <!-- Modal chuyển tiếp tin nhắn -->
+      <!-- Modal chuyển tiếp tin nhắn -->
 
       <%= if @show_forward_modal do %>
         <.modal id="forward-modal" show={true}>

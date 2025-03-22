@@ -386,13 +386,27 @@ defmodule Gchatdemo1.Chat do
               ^current_user_id,
               f.user_id
             ),
+        left_join: c in Conversation,
+        on:
+          c.is_group == false and
+            fragment(
+              "EXISTS (SELECT 1 FROM group_members gm1 WHERE gm1.conversation_id = ? AND gm1.user_id = ?)",
+              c.id,
+              ^current_user_id
+            ) and
+            fragment(
+              "EXISTS (SELECT 1 FROM group_members gm2 WHERE gm2.conversation_id = ? AND gm2.user_id = ?)",
+              c.id,
+              u.id
+            ),
         where:
           (f.user_id == ^current_user_id or f.friend_id == ^current_user_id) and
             f.status == "accepted",
-        select: %{id: u.id, email: u.email}
+        select: %{id: u.id, email: u.email, conversation_id: c.id}
 
     Repo.all(query)
   end
+
 
   def list_friends_not_in_group(current_user_id, conversation_id) do
     query =
