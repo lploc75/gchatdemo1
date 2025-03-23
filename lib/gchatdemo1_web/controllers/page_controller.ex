@@ -189,4 +189,8 @@ defmodule Gchatdemo1Web.PageController do
         |> redirect(to: "/friends")
     end
   end
+
+  def convert_stream(conn, %{"streamer_name" => streamer_name, "stream_id" => stream_id}) do
+    render(conn, :convert_stream, streamer_name: streamer_name, stream_id: stream_id)
+  end
 end

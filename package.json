@@ -14,6 +14,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "hls.js": "^1.5.20",
     "lit": "^3.2.1"
   }
 }

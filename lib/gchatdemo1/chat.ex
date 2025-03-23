@@ -770,7 +770,7 @@ defmodule Gchatdemo1.Chat do
       nil ->
         {:error, "Message not found"}
 
-      %Message{user_id: ^user_id} = message ->
+      %Message{user_id: ^user_id, conversation_id: conversation_id} = message ->
         Repo.transaction(fn ->
           # 🔥 **Xóa tất cả reaction liên quan đến tin nhắn**
           Repo.delete_all(from r in Reaction, where: r.message_id == ^message_id)

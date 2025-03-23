@@ -36,6 +36,24 @@ defmodule Gchatdemo1Web.Router do
     get "/friends", PageController, :friends
     # Thêm route hủy kết bạn
     delete "/unfriend/:friend_id", PageController, :unfriend
+
+    # Thêm rouute cho livestreamn
+    get "/stream/:streamer_name", StreamController, :stream
+    get "/video/*filename", HlsController, :index
+    get "/stream/:streamer_name/custom_stream", CustomStreamController, :index
+
+
+    live "/watch_video/:id", VideoLive
+    get "/stream_key/:streamer_name", StreamSettingController, :index
+    live "/stream", StreamNowListLive
+
+    # Cho xem restream
+    get "/watch/:streamer_name", StreamListOldController, :index
+    live "/watch/:display_name/:stream_id", WatchOldLive
+    get "/watch_restream/:streamer_name/:stream_id/:filename", HlsController, :watch
+    # List streamer
+
+    live "/streamers", StreamerListLive
   end
 
   # Other scopes may use custom stacks.
