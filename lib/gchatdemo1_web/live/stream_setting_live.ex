@@ -15,7 +15,8 @@ defmodule Gchatdemo1Web.StreamSettingLive do
        stream_key: stream_setting && stream_setting.stream_key,
        title: stream_setting && stream_setting.title,
        description: stream_setting && stream_setting.description,
-       update_success: nil
+       update_success: nil,
+       show_stream_key: false
      ), layout: false}
   end
 
@@ -32,11 +33,19 @@ defmodule Gchatdemo1Web.StreamSettingLive do
   end
 
   def handle_event("view_stream_key", _params, socket) do
-    stream_setting = get_stream_setting_by_streamer_id(socket.assigns.streamer_id)
-    stream_key = if stream_setting, do: stream_setting.stream_key, else: "Not Found"
+    if socket.assigns.show_stream_key do
+      # Đang hiển thị -> Ẩn đi
+      {:noreply, assign(socket, show_stream_key: false)}
+    else
+      # Đang ẩn -> Hiển thị Stream Key
+      stream_setting = get_stream_setting_by_streamer_id(socket.assigns.streamer_id)
+      stream_key = if stream_setting, do: stream_setting.stream_key, else: "Not Found"
 
-    {:noreply, assign(socket, stream_key: stream_key)}
+      {:noreply, assign(socket, stream_key: stream_key, show_stream_key: true)}
+    end
   end
+
+
 
   def handle_event(
         "update_stream_info",
@@ -119,7 +128,7 @@ defmodule Gchatdemo1Web.StreamSettingLive do
         Xem Stream Key
       </button>
 
-      <%= if @stream_key do %>
+      <%= if @show_stream_key do %>
         <div class="p-4 bg-gray-100 rounded-lg text-center">
           <p class="text-gray-800 font-semibold">Stream Key của bạn:</p>
           <p id="stream-key" class="text-lg font-mono bg-gray-200 p-2 rounded mt-2">{@stream_key}</p>
@@ -128,4 +137,5 @@ defmodule Gchatdemo1Web.StreamSettingLive do
     </div>
     """
   end
+
 end
