@@ -122,7 +122,7 @@ defmodule Gchatdemo1Web.StreamSettingLive do
       <%= if @stream_key do %>
         <div class="p-4 bg-gray-100 rounded-lg text-center">
           <p class="text-gray-800 font-semibold">Stream Key của bạn:</p>
-          <p id="stream-key" class="text-lg font-mono bg-gray-200 p-2 rounded mt-2">{@stream_key}</p
+          <p id="stream-key" class="text-lg font-mono bg-gray-200 p-2 rounded mt-2">{@stream_key}</p>
         </div>
       <% end %>
     </div>
