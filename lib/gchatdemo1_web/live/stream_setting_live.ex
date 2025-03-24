@@ -122,24 +122,10 @@ defmodule Gchatdemo1Web.StreamSettingLive do
       <%= if @stream_key do %>
         <div class="p-4 bg-gray-100 rounded-lg text-center">
           <p class="text-gray-800 font-semibold">Stream Key của bạn:</p>
-          <p id="stream-key" class="text-lg font-mono bg-gray-200 p-2 rounded mt-2">{@stream_key}</p>
-          <button
-            phx-click="copy_stream_key"
-            class="mt-3 bg-yellow-500 text-white py-2 px-4 rounded hover:bg-yellow-600 transition"
-          >
-            Copy
-          </button>
+          <p id="stream-key" class="text-lg font-mono bg-gray-200 p-2 rounded mt-2">{@stream_key}</p
         </div>
       <% end %>
     </div>
-
-    <script>
-      window.addEventListener("phx:copy_stream_key", (e) => {
-        navigator.clipboard.writeText(e.detail.stream_key).then(() => {
-          alert("Đã sao chép Stream Key!");
-        });
-      });
-    </script>
     """
   end
 end
