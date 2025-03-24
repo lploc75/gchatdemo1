@@ -61,7 +61,20 @@ defmodule Gchatdemo1.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.1.1"},
       {:cloudex, "~> 0.2.0"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+
+
+      ## Membrane deps
+      {:membrane_core, "~> 1.0"},
+      {:membrane_framerate_converter_plugin, "~> 0.8.2"},
+      {:membrane_ffmpeg_swscale_plugin, "~> 0.15.1"},
+      {:membrane_h264_ffmpeg_plugin, "~> 0.31.6"},
+      {:membrane_http_adaptive_stream_plugin, "~> 0.18.5"},
+      {:membrane_rtmp_plugin, "~> 0.27.2"},
+      {:plug_cowboy, "~> 2.5"},
+      {:membrane_tee_plugin, "~> 0.12.0"},
+      {:httpoison, "~> 0.13.0"},
+      {:mime, "~> 2.0.6"}
     ]
   end
 

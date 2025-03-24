@@ -32,11 +32,11 @@ defmodule Gchatdemo1Web.UserSettingsLive do
           <.live_img_preview :if={entry.client_type in ["image/png", "image/jpeg"]} entry={entry} />
           <figcaption>{entry.client_name}</figcaption>
         </figure>
-        
-        <button type="button" phx-click="cancel-upload" phx-value-ref={entry.ref} aria-label="cancel">
-          &times;
-        </button>
-         <progress value={entry.progress} max="100">{entry.progress}%</progress>
+
+        <button type="button" phx-click="cancel-upload" phx-value-ref={entry.ref} aria-label="cancel">&times;</button>
+
+        <progress value={entry.progress} max="100"><%= entry.progress %>%</progress>
+
         <div :for={err <- upload_errors(@uploads.images, entry)} class="alert alert-danger">
           {upload_error_to_string(err)}
         </div>
@@ -49,25 +49,21 @@ defmodule Gchatdemo1Web.UserSettingsLive do
       <img src={@uploaded_images} width="150" />
     </div> --%>
     <div class="space-y-12 divide-y">
-      <div>
-        <.simple_form
-          for={@display_name_form}
-          id="display_name_form"
-          phx-submit="update_display_name"
-          phx-change="validate_display_name"
-        >
-          <.input
-            field={@display_name_form[:display_name]}
-            type="text"
-            label="Tên hiển thị"
-            required
-          />
-          <:actions>
-            <.button phx-disable-with="Saving...">Lưu</.button>
-          </:actions>
-        </.simple_form>
-      </div>
-      
+    <div>
+<.simple_form
+  for={@display_name_form}
+  id="display_name_form"
+  phx-submit="update_display_name"
+  phx-change="validate_display_name"
+>
+  <.input field={@display_name_form[:display_name]} type="text" label="Display Name" required />
+
+  <:actions>
+    <.button phx-disable-with="Saving...">Save</.button>
+  </:actions>
+</.simple_form>
+
+    </div>
       <div>
         <.simple_form
           for={@email_form}
@@ -90,7 +86,7 @@ defmodule Gchatdemo1Web.UserSettingsLive do
           </:actions>
         </.simple_form>
       </div>
-      
+
       <div>
         <.simple_form
           for={@password_form}
@@ -131,6 +127,15 @@ defmodule Gchatdemo1Web.UserSettingsLive do
             <.button phx-disable-with="Changing...">Thay đổi mật khẩu</.button>
           </:actions>
         </.simple_form>
+      </div>
+      <div>
+        <a
+          href={"/stream/#{@current_user.display_name}/custom_stream"}
+          class="px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition"
+          target="_blank"
+        >
+          Cài đặt Stream
+        </a>
       </div>
     </div>
     """

@@ -3,6 +3,11 @@
 @import "tailwindcss/utilities";
 
 /* This file is for your main application CSS */
+@import "https://cdn.vidstack.io/player/theme.css";
+@import "https://cdn.vidstack.io/player/video.css";
+
+
+/* This file is for your main application CSS */
 /* Container tin nhắn */
 .message-container {
     display: flex;

@@ -564,4 +564,11 @@ defmodule Gchatdemo1.Accounts do
         Repo.delete(friendship)
     end
   end
+
+  def change_user_role_to_streamer(user) do
+    user
+    |> Ecto.Changeset.change(%{role: 2}) # Cập nhật role = 2
+    |> Repo.update()
+  end
+
 end
