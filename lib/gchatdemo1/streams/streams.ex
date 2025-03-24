@@ -57,11 +57,24 @@ defmodule Gchatdemo1.Streams do
 
   # Lấy stream_id theo streamer_name và stream_status = true
   def get_stream_by_streamer_id(streamer_id) do
-    Repo.one(
+    streams = Repo.all(
       from s in StreamInfor,
-      where: s.streamer_id == ^streamer_id and s.stream_status == true
+      where: s.streamer_id == ^streamer_id and s.stream_status == true,
+      order_by: [desc: s.id]
     )
+
+    case streams do
+      [] -> nil  # Không có stream nào đang bật
+      [latest | others] ->
+        # Cập nhật tất cả các stream khác thành false
+        Enum.each(others, fn stream ->
+          Repo.update!(Ecto.Changeset.change(stream, stream_status: false))
+        end)
+
+        latest  # Trả về stream mới nhất
+    end
   end
+
 
   def update_output_path(%StreamInfor{} = stream, new_path) do
     stream
