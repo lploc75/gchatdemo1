@@ -74,7 +74,8 @@ defmodule Gchatdemo1.MixProject do
       {:plug_cowboy, "~> 2.5"},
       {:membrane_tee_plugin, "~> 0.12.0"},
       {:httpoison, "~> 0.13.0"},
-      {:mime, "~> 2.0.6"}
+      {:mime, "~> 2.0.6"},
+      {:cors_plug, "~> 3.0"}
     ]
   end
 

@@ -47,25 +47,7 @@ defmodule Gchatdemo1Web.StreamSettingLive do
 
 
 
-  def handle_event(
-        "update_stream_info",
-        %{"title" => title, "description" => description},
-        socket
-      ) do
-    case update_stream_info(socket.assigns.streamer_id, %{title: title, description: description}) do
-      {:ok, updated_setting} ->
-        socket =
-          socket
-          |> assign(title: updated_setting.title, description: updated_setting.description)
-          # Gán trạng thái cập nhật thành công
-          |> assign(:update_success, true)
 
-        {:noreply, push_event(socket, "hide_notification", %{})}
-
-      {:error, _} ->
-        {:noreply, assign(socket, :update_success, false)}
-    end
-  end
 
   defp generate_stream_key do
     :crypto.strong_rand_bytes(12) |> Base.encode16() |> binary_part(0, 16)
@@ -94,6 +76,26 @@ defmodule Gchatdemo1Web.StreamSettingLive do
     case Repo.update(changeset) do
       {:ok, updated_stream_setting} -> updated_stream_setting
       {:error, _} -> nil
+    end
+  end
+
+  def handle_event(
+        "update_stream_info",
+        %{"title" => title, "description" => description},
+        socket
+      ) do
+    case update_stream_info(socket.assigns.streamer_id, %{title: title, description: description}) do
+      {:ok, updated_setting} ->
+        socket =
+          socket
+          |> assign(title: updated_setting.title, description: updated_setting.description)
+          # Gán trạng thái cập nhật thành công
+          |> assign(:update_success, true)
+
+        {:noreply, push_event(socket, "hide_notification", %{})}
+
+      {:error, _} ->
+        {:noreply, assign(socket, :update_success, false)}
     end
   end
 

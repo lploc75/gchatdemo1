@@ -38,7 +38,7 @@ defmodule Gchatdemo1Web.Router do
     delete "/unfriend/:friend_id", PageController, :unfriend
 
     # Thêm rouute cho livestreamn
-    get "/stream/:streamer_name", StreamController, :stream
+
     get "/video/*filename", HlsController, :index
     get "/stream/:streamer_name/custom_stream", CustomStreamController, :index
 
@@ -158,6 +158,24 @@ defmodule Gchatdemo1Web.Router do
     post "/messages/:message_id/mark-seen", ChatController, :mark_single_message_as_seen
 
     # post "/messages", ChatController, :send_message
+
+    # Xem stream
+    get "/stream/:streamer_name", StreamController, :stream
+    # Stream key
+    get "/stream_key/:streamer_name", StreamController, :show
+    post "/stream_key/:streamer_name", StreamController, :create
+    # Streamer mode
+    get "/stream/check/:streamer_name", StreamController, :check_stream_mode
+    post "/stream/toggle", StreamController, :toggle_role
+    # Xem stream list
+    get "/streams/active", StreamController, :list_active_streams
+    # Restream get
+    get "/streamers", StreamController, :list_streamers
+    get "/streams/old/:streamer_name", StreamController, :get_old_streams
+    # Update title và desc
+    put "/stream/update-setting", StreamController, :update_stream_setting
+    # oldstream
+    get "/video/:stream_id", StreamController, :get_video_info
   end
 
   scope "/", Gchatdemo1Web do

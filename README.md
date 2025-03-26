@@ -6,7 +6,9 @@ Hướng dẫn cho stream:
 5. Khi chạy `mix deps.get` hay là `mix deps.compile` thì có thể xáy ra lỗi vì có một vài deps nó cần cài thủ công nên cần phải hỏi gpt để chỉ cách tải.
 6. Nếu muốn tương tác pgAdmin của postgrex trên wsl thì lên chat GPT hỏi hơi khó làm, còn ko thì cứ tương tác với database bằng ecto là được. (gõ là cách tương tác với pgadmin trên wsl là nó ra cách làm).
 7. Vào OBS -> Setting -> Stream: Tại mục Services thì chọn là Custom..., mục Server thì rtmp://localhost:9006/<Streamer_Id còn gọi là User_Id> ví dụ (rtmp://localhost:9006/1), Stream key thì tạo r gắn vào mới stream dc.
-8. Hiện tại cú merge vào main trước nếu có lỗi hay cài không dc liên hệ Kiên để setup các thứ.
+8. Nếu có lỗi hay cài không dc liên hệ Kiên để setup các thứ.
+9. Tải extension WSL cho visual nhá
+10. Nếu ko muốn livestream mà vẫn test dc livestream thì xme phần output có 3 folder là 87/125/126 -> vào database và vào table là stream_infor sau dó tạo một row có id là 3 số trên, streamer_id thì là là user_id của bạn, output_path mẫu là "125/index.m3u8", stream_status là true thì dc còn lại thì điền gì cx dc.
 
 # Gchatdemo1
 

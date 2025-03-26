@@ -14,7 +14,7 @@ defmodule Gchatdemo1Web.UserLoginLive do
           tài khoản mới ngay.
         </:subtitle>
       </.header>
-      
+
       <.simple_form for={@form} id="login_form" action={~p"/users/log_in"} phx-update="ignore">
         <.input field={@form[:email]} type="email" label="Email" required />
         <.input field={@form[:password]} type="password" label="Mật khẩu" required />
@@ -24,7 +24,7 @@ defmodule Gchatdemo1Web.UserLoginLive do
             Quên mật khẩu?
           </.link>
         </:actions>
-        
+
         <:actions>
           <.button phx-disable-with="Logging in..." class="w-full">
             Đăng nhập <span aria-hidden="true">→</span>
