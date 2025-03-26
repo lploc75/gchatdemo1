@@ -2,8 +2,12 @@ import "phoenix_html"
 import { Socket } from "phoenix"
 import { LiveSocket } from "phoenix_live_view"
 import topbar from "../vendor/topbar"
-import "./chat-room.js";
 import Uploaders from "./uploaders"
+
+import "./chat-room.js";
+import "./dashboard.js";
+import "./list_friend.js";
+import "./friend_request.js";
 
 // Cấu hình STUN server của Google
 const configuration = {

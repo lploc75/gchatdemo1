@@ -8,49 +8,7 @@
 </head>
 
 <body>
-    <h1>Trang Dashboard</h1>
-
-    <!-- Thông tin người dùng hiện tại -->
-    <%= if @current_user do %>
-        <h2>Thông tin của bạn:</h2>
-        <p>ID: <%= @current_user.id %>
-        </p>
-        <img src={@current_user.avatar_url} alt="avatar" class="message-avatar" />
-        <p>Email: <%= @current_user.email %>
-        </p>
-        <% end %>
-
-            <!-- Các liên kết chuyển hướng -->
-            <a href={~p"/friends"}>Xem danh sách bạn bè</a><br>
-            <a href={~p"/friend_requests"}>Yêu cầu kết bạn</a>
-
-            <!-- Phần hiển thị danh sách bạn bè -->
-            <%= if @friends !=[] do %>
-                <h2>Danh sách bạn bè:</h2>
-                <ul>
-                    <%= for friend <- @friends do %>
-                        <li
-                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5em;">
-                            <div>
-                                <img src={friend.avatar_url} alt="avatar" class="message-avatar" />
-                                <strong>Email:</strong>
-                                <%= friend.email %> <br>
-                                    <strong>ID:</strong>
-                                    <%= friend.friend_id %>
-                            </div>
-                            <div>
-                                <a href={~p"/messages/#{friend.conversation}"}
-                                    style="padding: 0.3em 0.6em; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 4px;">
-                                    Nhắn tin
-                                </a>
-                            </div>
-                        </li>
-                        <% end %>
-                </ul>
-                <% else %>
-                    <p>Bạn chưa có bạn bè nào.</p>
-                    <% end %>
-
+    <dashboard-component></dashboard-component>
 </body>
 
 </html>

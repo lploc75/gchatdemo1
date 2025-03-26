@@ -1,4 +1,3 @@
-<!-- lib/friend_web/controllers/page_html/friend_requests.html.heex -->
 <!DOCTYPE html>
 <html lang="en">
 
@@ -9,47 +8,7 @@
 </head>
 
 <body>
-    <h1>Lời mời kết bạn đang chờ:</h1>
-
-    <%= if @requests==[] do %>
-        <p>Không có lời mời kết bạn nào.</p>
-        <% else %>
-            <ul>
-                <%= for request <- @requests do %>
-                    <li>
-                    <img src={request.avatar_url} alt="avatar" class="message-avatar" />
-                        <p>Email: <%= request.email %>
-                        </p>
-                        <form action={~p"/friend_requests/#{request.id}/accept"} method="post">
-                            <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()}>
-                            <button type="submit">Chấp nhận</button>
-                        </form>
-                        <form action={~p"/friend_requests/#{request.id}/decline"} method="post">
-                            <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()}>
-                            <button type="submit">Từ chối</button>
-                        </form>
-                    </li>
-                    <% end %>
-            </ul>
-            <% end %>
-
-                <!-- Hiển thị thông báo -->
-                <%= if @flash[:info] do %>
-                    <p style="color: green;">
-                        <%= @flash[:info] %>
-                    </p>
-                    <% end %>
-                        <%= if @flash[:error] do %>
-                            <p style="color: red;">
-                                <%= @flash[:error] %>
-                            </p>
-                            <% end %>
-                                <!-- Thêm liên kết quay lại -->
-                                <a id="Dashboard" href={~p"/dashboard"}
-                                    class="inline-block px-6 py-3 bg-blue-500 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition duration-300">
-                                    Quay lại Dashboard
-                                </a>
-
+    <friend-requests-component></friend-requests-component>
 </body>
 
 </html>

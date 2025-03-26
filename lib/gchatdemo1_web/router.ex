@@ -21,22 +21,11 @@ defmodule Gchatdemo1Web.Router do
 
   scope "/", Gchatdemo1Web do
     pipe_through :browser
-
     get "/", PageController, :home
-    get "/dashboard", PageController, :dashboard
-    post "/friends", PageController, :friends
-    post "/users/:id/send_request", PageController, :send_friend_request
-    post "/users/:id/cancel_request", PageController, :cancel_friend_request
-    # Route hiển thị danh sách lời mời
-    get "/friend_requests", PageController, :friend_requests
-    # Route xử lý chấp nhận/từ chối lời mời
-    post "/friend_requests/:id/accept", PageController, :accept_friend_request
-    post "/friend_requests/:id/decline", PageController, :decline_friend_request
-    # Hiện thị danh sách bạn bè
-    get "/friends", PageController, :friends
-    # Thêm route hủy kết bạn
-    delete "/unfriend/:friend_id", PageController, :unfriend
-
+    get "/dashboard", PageController, :index
+    # Thêm route mới
+    get "/list_friends", PageController, :list_friends
+    get "/friend_requests", PageController, :friend_requests_page
     # Thêm rouute cho livestreamn
     get "/stream/:streamer_name", StreamController, :stream
     get "/video/*filename", HlsController, :index
@@ -122,9 +111,22 @@ defmodule Gchatdemo1Web.Router do
     pipe_through :api
     # pipe_through [:api, :require_authenticated_user]
 
+    get "/dashboard", PageController, :dashboard
+    post "/friends", PageController, :friends
+    post "/users/:id/send_request", PageController, :send_friend_request
+    post "/users/:id/cancel_request", PageController, :cancel_friend_request
+    # Route hiển thị danh sách lời mời
+    get "/friend_requests", PageController, :friend_requests
+    # Route xử lý chấp nhận/từ chối lời mời
+    post "/friend_requests/:id/accept", PageController, :accept_friend_request
+    post "/friend_requests/:id/decline", PageController, :decline_friend_request
+    # Hiện thị danh sách bạn bè
+    get "/list_friends", PageController, :friends
+    # Thêm route hủy kết bạn
+    delete "/unfriend/:friend_id", PageController, :unfriend
+
     # Thêm route này để lấy token
     get "/user_token", UserSessionController, :get_token
-
     # Lấy danh sách bạn bè của người dùng
     get "/friends", ChatController, :get_friends
     # Lấy danh sách bạn bè chưa trong group

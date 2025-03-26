@@ -427,10 +427,15 @@ defmodule Gchatdemo1.Accounts do
         where: f.friend_id == ^user_id and f.status == "pending",
         join: u in User,
         on: u.id == f.user_id,
-        select: %{id: f.id, user_id: f.user_id, email: u.email, avatar_url: u.avatar_url}
+        select: %{
+          id: f.id,
+          # Đổi từ user_id thành sender_id
+          sender_id: f.user_id,
+          email: u.email,
+          avatar_url: u.avatar_url
+        }
     )
   end
-
   # Chấp nhận lời mời kết bạn
   def accept_friend_request(request_id) do
     Repo.transaction(fn ->

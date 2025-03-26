@@ -3,39 +3,76 @@ defmodule Gchatdemo1Web.PageController do
   use Gchatdemo1Web, :controller
   alias Gchatdemo1.Messaging
 
+  # Điểm vào SPA
   def home(conn, _params) do
     # Trang home thường dùng layout riêng, nên render với layout: false
     render(conn, :home, layout: false)
   end
 
+  def index(conn, _params) do
+    render(conn, :dashboard, layout: false)
+  end
+
+  def list_friends(conn, _params) do
+    render(conn, :list_friends, layout: false)
+  end
+
+  def friend_requests_page(conn, _params) do
+    render(conn, :friend_requests, layout: false)
+  end
+
   # Dashboard chỉ hiển thị thông tin chung (không còn chứa form tìm kiếm bạn bè)
   def dashboard(conn, _params) do
+    # Lấy trực tiếp struct User từ conn.assigns
     current_user = conn.assigns.current_user
-    friends = Accounts.list_friends(current_user.id)
 
-    friends_with_conversations =
-      Enum.map(friends, fn friend ->
-        conversation = Messaging.get_or_create_conversation(current_user.id, friend.friend_id)
-        Map.put(friend, :conversation, conversation)
+    # Lấy danh sách bạn bè dựa trên ID của current_user
+    friends =
+      current_user.id
+      |> Accounts.list_friends()
+      # Để debug nếu cần
+      |> IO.inspect(label: "friends")
+      |> Enum.map(fn friend ->
+        # Lấy hoặc tạo cuộc hội thoại
+        conversation_id = Messaging.get_or_create_conversation(current_user.id, friend.friend_id)
+        # Để debug nếu cần
+        IO.inspect(conversation_id, label: "conversation")
+
+        %{
+          id: friend.friend_id,
+          email: friend.email,
+          avatar_url: friend.avatar_url,
+          conversation_id: conversation_id
+        }
       end)
 
-    render(conn, :dashboard,
-      current_user: current_user,
-      friends: friends,
-      friends: friends_with_conversations
-    )
+    # Trả về JSON response
+    json(conn, %{
+      current_user: %{
+        id: current_user.id,
+        email: current_user.email,
+        avatar_url: current_user.avatar_url
+      },
+      friends: friends
+    })
   end
 
   # Action friends dùng để hiển thị danh sách bạn bè và xử lý tìm kiếm bạn bè
   def friends(conn, params) do
     current_user = conn.assigns.current_user
-    friends = Accounts.list_friends(current_user.id)
 
-    # Tạo danh sách bạn bè có thêm thông tin conversation
-    friends_with_conversations =
-      Enum.map(friends, fn friend ->
-        conversation = Messaging.get_or_create_conversation(current_user.id, friend.friend_id)
-        Map.put(friend, :conversation, conversation)
+    friends =
+      current_user.id
+      |> Accounts.list_friends()
+      |> Enum.map(fn friend ->
+        conversation_id = Messaging.get_or_create_conversation(current_user.id, friend.friend_id)
+
+        %{
+          id: friend.friend_id,
+          email: friend.email,
+          avatar_url: friend.avatar_url,
+          conversation_id: conversation_id
+        }
       end)
 
     if conn.method == "POST" do
@@ -43,66 +80,40 @@ defmodule Gchatdemo1Web.PageController do
         %{"email" => email} ->
           case Accounts.search_user_by_email(email) do
             nil ->
-              conn
-              |> put_flash(:error, "Không tìm thấy người dùng")
-              |> render(:friends,
-                current_user: current_user,
-                searched_user: nil,
-                status: nil,
-                friends: friends_with_conversations
-              )
+              json(conn, %{error: "Không tìm thấy người dùng haha", friends: friends})
 
             searched_user ->
               status =
-                if Enum.any?(friends, fn friend -> friend.friend_id == searched_user.id end) do
+                if Enum.any?(friends, fn friend -> friend.id == searched_user.id end) do
                   "accepted"
                 else
                   Accounts.get_friendship_status(current_user, searched_user)
                 end
 
-              render(conn, :friends,
-                current_user: current_user,
-                searched_user: searched_user,
+              json(conn, %{
+                searched_user: %{
+                  id: searched_user.id,
+                  email: searched_user.email,
+                  avatar_url: searched_user.avatar_url
+},
                 status: status,
-                friends: friends_with_conversations
-              )
+                # Thêm friends vào response
+                friends: friends
+              })
           end
 
         _ ->
-          redirect(conn, to: "/friends")
+          json(conn, %{error: "Thiếu email", friends: friends})
       end
     else
-      render(conn, :friends,
-        current_user: current_user,
-        searched_user: nil,
-        status: nil,
-        friends: friends_with_conversations
-      )
-    end
-  end
-
-  # Trang tìm kiếm riêng (nếu cần)
-  def search_form(conn, _params) do
-    render(conn, :search, layout: false)
-  end
-
-  def search(conn, %{"email" => email}) do
-    current_user = conn.assigns.current_user
-
-    case Accounts.search_user_by_email(email) do
-      nil ->
-        conn
-|> put_flash(:error, "Không tìm thấy người dùng")
-        |> redirect(to: "/search")
-
-      searched_user ->
-        status = Accounts.get_friendship_status(current_user, searched_user)
-
-        render(conn, :search,
-          current_user: current_user,
-          searched_user: searched_user,
-          status: status
-        )
+      json(conn, %{
+        current_user: %{
+          id: current_user.id,
+          email: current_user.email,
+          avatar_url: current_user.avatar_url
+        },
+        friends: friends
+      })
     end
   end
 
@@ -111,14 +122,10 @@ defmodule Gchatdemo1Web.PageController do
 
     case Accounts.send_friend_request(user_id, friend_id) do
       {:ok, _} ->
-        conn
-        |> put_flash(:info, "Đã gửi yêu cầu kết bạn!")
-        |> redirect(to: "/friends")
+        json(conn, %{success: true, message: "Đã gửi yêu cầu kết bạn!"})
 
-      {:error, _} ->
-        conn
-        |> put_flash(:error, "Không thể gửi yêu cầu")
-        |> redirect(to: "/friends")
+      {:error, reason} ->
+        json(conn, %{success: false, message: "Không thể gửi yêu cầu: #{reason}"})
     end
   end
 
@@ -127,49 +134,47 @@ defmodule Gchatdemo1Web.PageController do
 
     case Accounts.cancel_friend_request(user_id, friend_id) do
       {:ok, _} ->
-        conn
-        |> put_flash(:info, "Đã hủy yêu cầu")
-        |> redirect(to: "/friends")
+        json(conn, %{success: true, message: "Đã hủy yêu cầu"})
 
-      {:error, _} ->
-        conn
-        |> put_flash(:error, "Không thể hủy")
-        |> redirect(to: "/friends")
+      {:error, reason} ->
+        json(conn, %{success: false, message: "Không thể hủy: #{reason}"})
     end
   end
 
   def friend_requests(conn, _params) do
     current_user = conn.assigns.current_user
-    requests = Accounts.list_pending_friend_requests(current_user.id)
 
-    render(conn, :friend_requests, requests: requests)
+    requests =
+      Accounts.list_pending_friend_requests(current_user.id)
+      |> Enum.map(fn req ->
+        %{
+          id: req.id,
+          sender_id: req.sender_id,
+          sender_email: Accounts.get_user!(req.sender_id).email,
+          sender_avatar: Accounts.get_user!(req.sender_id).avatar_url
+        }
+      end)
+
+    json(conn, %{requests: requests})
   end
 
   def accept_friend_request(conn, %{"id" => request_id}) do
     case Accounts.accept_friend_request(request_id) do
       {:ok, _} ->
-        conn
-        |> put_flash(:info, "Đã chấp nhận lời mời kết bạn")
-        |> redirect(to: "/friend_requests")
+        json(conn, %{success: true, message: "Đã chấp nhận lời mời kết bạn"})
 
-      {:error, _} ->
-        conn
-        |> put_flash(:error, "Không thể chấp nhận lời mời")
-        |> redirect(to: "/friend_requests")
+      {:error, reason} ->
+        json(conn, %{success: false, message: "Không thể chấp nhận: #{reason}"})
     end
   end
 
   def decline_friend_request(conn, %{"id" => request_id}) do
     case Accounts.decline_friend_request(request_id) do
       {:ok, _} ->
-        conn
-        |> put_flash(:info, "Đã từ chối lời mời kết bạn")
-        |> redirect(to: "/friend_requests")
+        json(conn, %{success: true, message: "Đã từ chối lời mời kết bạn"})
 
-      {:error, _} ->
-        conn
-        |> put_flash(:error, "Không thể từ chối lời mời")
-        |> redirect(to: "/friend_requests")
+      {:error, reason} ->
+        json(conn, %{success: false, message: "Không thể từ chối: #{reason}"})
     end
   end
 
@@ -179,14 +184,10 @@ defmodule Gchatdemo1Web.PageController do
 
     case Accounts.unfriend(current_user.id, friend_id) do
       {:ok, _} ->
-        conn
-        |> put_flash(:info, "Đã hủy kết bạn thành công")
-        |> redirect(to: "/friends")
+        json(conn, %{success: true, message: "Đã hủy kết bạn thành công"})
 
-      {:error, _reason} ->
-        conn
-        |> put_flash(:error, "Không thể hủy kết bạn")
-        |> redirect(to: "/friends")
+      {:error, reason} ->
+        json(conn, %{success: false, message: "Không thể hủy kết bạn: #{reason}"})
     end
   end
 
