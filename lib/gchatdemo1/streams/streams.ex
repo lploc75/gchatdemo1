@@ -7,7 +7,7 @@ defmodule Gchatdemo1.Streams do
   alias Gchatdemo1.Repo
 
   alias Gchatdemo1.Streams.StreamInfor
-
+  alias Gchatdemo1.StreamSetting
   @doc """
   Returns the list of stream_infor.
   """
@@ -54,27 +54,30 @@ defmodule Gchatdemo1.Streams do
     StreamInfor.changeset(stream_infor, attrs)
   end
 
-
   # Lấy stream_id theo streamer_name và stream_status = true
   def get_stream_by_streamer_id(streamer_id) do
-    streams = Repo.all(
-      from s in StreamInfor,
-      where: s.streamer_id == ^streamer_id and s.stream_status == true,
-      order_by: [desc: s.id]
-    )
+    streams =
+      Repo.all(
+        from s in StreamInfor,
+          where: s.streamer_id == ^streamer_id and s.stream_status == true,
+          order_by: [desc: s.id]
+      )
 
     case streams do
-      [] -> nil  # Không có stream nào đang bật
+      # Không có stream nào đang bật
+      [] ->
+        nil
+
       [latest | others] ->
         # Cập nhật tất cả các stream khác thành false
         Enum.each(others, fn stream ->
           Repo.update!(Ecto.Changeset.change(stream, stream_status: false))
         end)
 
-        latest  # Trả về stream mới nhất
+        # Trả về stream mới nhất
+        latest
     end
   end
-
 
   def update_output_path(%StreamInfor{} = stream, new_path) do
     stream
@@ -83,8 +86,10 @@ defmodule Gchatdemo1.Streams do
   end
 
   def update_stream_status_when_stop_stream(streamer_id) do
-    case Repo.get_by(StreamInfor, [streamer_id: streamer_id, stream_status: true]) do
-      nil -> {:error, "Stream not found or already stopped"}
+    case Repo.get_by(StreamInfor, streamer_id: streamer_id, stream_status: true) do
+      nil ->
+        {:error, "Stream not found or already stopped"}
+
       stream ->
         stream
         |> StreamInfor.changeset(%{stream_status: false})
@@ -95,24 +100,28 @@ defmodule Gchatdemo1.Streams do
   # Cái này cho user nếu có sẵn khỏi dem qua
   def get_streamer_id_by_name(streamer_name) do
     Repo.one(
-      from u in Gchatdemo1.Accounts.User,  # Thêm đầy đủ namespace
-      where: u.display_name == ^streamer_name,
-      select: u.id
+      # Thêm đầy đủ namespace
+      from u in Gchatdemo1.Accounts.User,
+        where: u.display_name == ^streamer_name,
+        select: u.id
     )
   end
+
   # Cái này đúng hơn là coi user có bao giờ stream chưa
   def is_streamer(streamer_id) do
-    query = from s in Gchatdemo1.Streams.StreamInfor,
-            where: s.streamer_id == ^streamer_id,
-            select: count(s.id) > 0
+    query =
+      from s in Gchatdemo1.Streams.StreamInfor,
+        where: s.streamer_id == ^streamer_id,
+        select: count(s.id) > 0
 
     Repo.one(query)
   end
 
   def turn_on_stream_mode?(streamer_id) do
-    query = from u in Gchatdemo1.Accounts.User,
-            where: u.id == ^streamer_id and u.role == 2,
-            select: count(u.id) > 0
+    query =
+      from u in Gchatdemo1.Accounts.User,
+        where: u.id == ^streamer_id and u.role == 2,
+        select: count(u.id) > 0
 
     Repo.one(query)
   end
@@ -130,23 +139,25 @@ defmodule Gchatdemo1.Streams do
   def get_all_stream_now do
     Repo.all(
       from s in StreamInfor,
-      where: s.stream_status == true,
-      select: %{streamer_id: s.streamer_id, stream_id: s.id}
+        where: s.stream_status == true,
+        select: %{streamer_id: s.streamer_id, stream_id: s.id}
     )
   end
 
   def get_stream_setting_for_user(streamer_id) do
     Repo.one(
       from s in Gchatdemo1.StreamSetting,
-      where: s.streamer_id == ^streamer_id,
-      select: %{streamer_id: s.streamer_id, title: s.title, description: s.description}
+        where: s.streamer_id == ^streamer_id,
+        select: %{streamer_id: s.streamer_id, title: s.title, description: s.description}
     )
   end
 
   def update_stream_setting_for_user(streamer_id, attrs) do
     Repo.get_by(Gchatdemo1.StreamSetting, streamer_id: streamer_id)
     |> case do
-      nil -> {:error, "Stream setting not found"}
+      nil ->
+        {:error, "Stream setting not found"}
+
       stream_setting ->
         stream_setting
         |> Ecto.Changeset.change(attrs)
@@ -157,18 +168,69 @@ defmodule Gchatdemo1.Streams do
   def get_all_stream_old do
     Repo.all(
       from s in StreamInfor,
-      where: s.stream_status == false,
-      select: %{streamer_id: s.streamer_id, stream_id: s.id}
+        join: ss in Gchatdemo1.StreamSetting,
+        on: s.streamer_id == ss.streamer_id,
+        where: s.stream_status == false,
+        select: %{
+          stream_id: s.id,
+          streamer_id: s.streamer_id,
+          title: ss.title,
+          description: ss.description
+        }
     )
   end
+
 
   def get_all_streamer_name do
     Repo.all(
       from u in Gchatdemo1.Accounts.User,
-      where: u.role == 2,
-      select: %{streamer_id: u.id, streamer_name: u.display_name, avatar_url: u.avatar_url}
+        where: u.role == 2,
+        select: %{streamer_id: u.id, streamer_name: u.display_name, avatar_url: u.avatar_url}
     )
   end
 
+  # Stream key`
+  # Lấy stream key của streamer theo ID
+  def get_stream_key_by_streamer_id(streamer_id) do
+    Repo.one(
+      from s in StreamSetting,
+        where: s.streamer_id == ^streamer_id,
+        select: s.stream_key
+    )
+  end
 
+  # Tạo stream key mới
+  def generate_stream_key do
+    :crypto.strong_rand_bytes(12) |> Base.encode16() |> binary_part(0, 16)
+  end
+
+  # Lưu stream key vào database (tạo hoặc cập nhật)
+  def save_stream_key(streamer_id) do
+    stream_key = generate_stream_key()
+
+    case Repo.get_by(StreamSetting, streamer_id: streamer_id) do
+      nil ->
+        changeset =
+          StreamSetting.changeset(%StreamSetting{}, %{
+            streamer_id: streamer_id,
+            stream_key: stream_key
+          })
+
+        case Repo.insert(changeset) do
+          {:ok, _} -> {:ok, stream_key}
+          {:error, _} -> {:error, "Không thể tạo stream key"}
+        end
+
+      stream_setting ->
+        changeset =
+          StreamSetting.changeset(stream_setting, %{
+            stream_key: stream_key
+          })
+
+        case Repo.update(changeset) do
+          {:ok, _} -> {:ok, stream_key}
+          {:error, _} -> {:error, "Không thể cập nhật stream key"}
+        end
+    end
+  end
 end
