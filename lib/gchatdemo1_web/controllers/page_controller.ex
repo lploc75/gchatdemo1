@@ -13,6 +13,38 @@ defmodule Gchatdemo1Web.PageController do
     render(conn, :dashboard, layout: false)
   end
 
+  def register(conn, _params) do
+    render(conn, :register, layout: false)
+  end
+
+  def log_in(conn, _params) do
+    render(conn, :log_in, layout: false)
+  end
+
+  # Trang gửi yêu cầu quên mật khẩu
+  def forgot_password(conn, _params) do
+    render(conn, :forgot_password, layout: false)
+  end
+  # Trang reset mật khẩu
+  def reset_password(conn, %{"token" => token}) do
+    render(conn, :reset_password, layout: false, token: token)
+  end
+  # Trang xác nhận email
+  def confirm_email(conn, %{"token" => token}) do
+    render(conn, :confirm_email, layout: false, token: token)
+  end
+  # Trang gửi lại hướng dẫn xác nhận email
+  def confirm_email_instructions(conn, _params) do
+    render(conn, :confirm_email_instructions, layout: false)
+  end
+
+  def user_setting(conn, _params) do
+    render(conn, :user_setting, layout: false)
+  end
+  def user_setting_confirm_email(conn, %{"token" => token}) do
+    render(conn, :user_setting, layout: false, token: token)
+  end
+
   def list_friends(conn, _params) do
     render(conn, :list_friends, layout: false)
   end

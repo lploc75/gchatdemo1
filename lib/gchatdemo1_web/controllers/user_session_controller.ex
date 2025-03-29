@@ -34,39 +34,66 @@ defmodule Gchatdemo1Web.UserSessionController do
     end
   end
 
-  def create(conn, %{"_action" => "registered"} = params) do
-    create(conn, params, "Tài khoản đã được tạo thành công!")
-  end
+  # API lấy thông tin user
+  def get_user_info(conn, _params) do
+    user = conn.assigns.current_user
 
-  def create(conn, %{"_action" => "password_updated"} = params) do
-    conn
-    |> put_session(:user_return_to, ~p"/users/settings")
-    |> create(params, "Đã cập nhật mật khẩu thành công!")
-  end
-
-  def create(conn, params) do
-    create(conn, params, "Chào mừng trở lại!")
-  end
-
-  defp create(conn, %{"user" => user_params}, info) do
-    %{"email" => email, "password" => password} = user_params
-
-    if user = Accounts.get_user_by_email_and_password(email, password) do
-      conn
-      |> put_flash(:info, info)
-      |> UserAuth.log_in_user(user, user_params)
+    if user do
+      json(conn, %{id: user.id, email: user.email, display_name: user.display_name ,avatar_url: user.avatar_url})
     else
-      # In order to prevent user enumeration attacks, don't disclose whether the email is registered.
       conn
-      |> put_flash(:error, "Email hoặc mật khẩu không hợp lệ")
-      |> put_flash(:email, String.slice(email, 0, 160))
-      |> redirect(to: ~p"/users/log_in")
+      |> put_status(:unauthorized)
+      |> json(%{error: "Unauthorized"})
     end
   end
 
+  # def create(conn, %{"_action" => "registered"} = params) do
+  #   create(conn, params, "Tài khoản đã được tạo thành công!")
+  # end
+
+  # def create(conn, %{"_action" => "password_updated"} = params) do
+  #   conn
+  #   |> put_session(:user_return_to, ~p"/users/settings")
+  #   |> create(params, "Đã cập nhật mật khẩu thành công!")
+  # end
+
+  # def create(conn, params) do
+  #   create(conn, params, "Chào mừng trở lại!")
+  # end
+
+  # defp create(conn, %{"user" => user_params}, info) do
+  #   %{"email" => email, "password" => password} = user_params
+
+  #   if user = Accounts.get_user_by_email_and_password(email, password) do
+  #     conn
+  #     |> put_flash(:info, info)
+  #     |> UserAuth.log_in_user(user, user_params)
+  #   else
+  #     # In order to prevent user enumeration attacks, don't disclose whether the email is registered.
+  #     conn
+  #     |> put_flash(:error, "Email hoặc mật khẩu không hợp lệ")
+  #     |> put_flash(:email, String.slice(email, 0, 160))
+  #     |> redirect(to: ~p"/users/log_in")
+  #   end
+  # end
+
+  # Login
+  # Thông tin của json trả về được đặt ở bên kia
+  def create(conn, %{"user" => user_params}) do
+    %{"email" => email, "password" => password} = user_params
+
+    if user = Accounts.get_user_by_email_and_password(email, password) do
+      UserAuth.log_in_user(conn, user)
+    else
+      conn
+      |> put_status(:unauthorized)
+      |> json(%{success: false, error: "Email hoặc mật khẩu không hợp lệ"})
+    end
+  end
   def delete(conn, _params) do
     conn
-    |> put_flash(:info, "Đã đăng xuất thành công.")
     |> UserAuth.log_out_user()
+    |> json(%{success: true, message: "Đã đăng xuất thành công."})
   end
+
 end

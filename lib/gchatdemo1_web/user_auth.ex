@@ -25,15 +25,20 @@ defmodule Gchatdemo1Web.UserAuth do
   disconnected on log out. The line can be safely removed
   if you are not using LiveView.
   """
-  def log_in_user(conn, user, params \\ %{}) do
+  ef log_in_user(conn, user, params \\ %{}) do
     token = Accounts.generate_user_session_token(user)
-    user_return_to = get_session(conn, :user_return_to)
+    tokenBase64 = Base.encode64(token)
 
     conn
     |> renew_session()
     |> put_token_in_session(token)
     |> maybe_write_remember_me_cookie(token, params)
-    |> redirect(to: user_return_to || signed_in_path(conn))
+    |> json(%{
+      success: true,
+      message: "Đăng nhập thành công!",
+      user: %{id: user.id, email: user.email},
+      tokenBase64: tokenBase64
+    })
   end
 
   defp maybe_write_remember_me_cookie(conn, token, %{"remember_me" => "true"}) do

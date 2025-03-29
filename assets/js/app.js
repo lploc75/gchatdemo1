@@ -8,6 +8,13 @@ import "./chat-room.js";
 import "./dashboard.js";
 import "./list_friend.js";
 import "./friend_request.js";
+import "./register.js";
+import "./login.js";
+import "./forgot-password.js";
+import "./reset-password.js";
+import "./user-confirmation.js";
+import "./user-confirm-instruction.js";
+import "./user-setting.js";
 
 // Cấu hình STUN server của Google
 const configuration = {
