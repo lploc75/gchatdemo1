@@ -12,7 +12,6 @@ defmodule Gchatdemo1.Application do
 
   @impl true
   def start(_type, _args) do
-
     rtmp_server_options = %{
       port: @port,
       listen_options: [
@@ -34,53 +33,56 @@ defmodule Gchatdemo1.Application do
         if stream_key == stream_key_current and stream_key_current != nil and streamer_id != nil do
           # Gọi modal xác nhận trước khi tạo stream
 
+          # Tạo một stream_infor mới
+          IO.inspect(streamer_id, label: "📌 streamer_id trước khi tạo stream")
 
-            # Tạo một stream_infor mới
-            IO.inspect(streamer_id, label: "📌 streamer_id trước khi tạo stream")
+          result =
+            Gchatdemo1.Streams.create_stream_infor(%{
+              streamer_id: streamer_id,
+              stream_status: true
+            })
 
-            result =
-              Gchatdemo1.Streams.create_stream_infor(%{
-                streamer_id: streamer_id,
-                stream_status: true
-              })
+          IO.inspect(result, label: "📌 Kết quả create_stream_infor")
 
-            IO.inspect(result, label: "📌 Kết quả create_stream_infor")
+          # Lấy stream_id để tạo output_path
+          stream_infor = Gchatdemo1.Streams.get_stream_by_streamer_id(streamer_id)
 
-            # Lấy stream_id để tạo output_path
-            stream_infor = Gchatdemo1.Streams.get_stream_by_streamer_id(streamer_id)
+          case stream_infor do
+            nil ->
+              Logger.info("Client ref khi tắt: #{inspect(client_ref)}")
+              terminate_client_ref(client_ref, streamer_id)
 
-            case stream_infor do
-              nil ->
-                Logger.info("Client ref khi tắt: #{inspect(client_ref)}")
-                terminate_client_ref(client_ref, streamer_id)
+            stream ->
+              IO.inspect(stream, label: "📌 Kết quả stream_infor")
+          end
 
-              stream -> IO.inspect(stream, label: "📌 Kết quả stream_infor")
-            end
+          stream_id = stream_infor.id
+          output_path = "#{stream_id}/index.m3u8"
 
-            stream_id = stream_infor.id
-            output_path = "#{stream_id}/index.m3u8"
+          case Gchatdemo1.Streams.update_output_path(stream_infor, output_path) do
+            {:ok, updated_stream} ->
+              IO.inspect(updated_stream, label: "✅ Đã cập nhật output_path")
 
-            case Gchatdemo1.Streams.update_output_path(stream_infor, output_path) do
-              {:ok, updated_stream} -> IO.inspect(updated_stream, label: "✅ Đã cập nhật output_path")
-              {:error, changeset} -> IO.inspect(changeset.errors, label: "❌ Lỗi khi cập nhật output_path")
-            end
+            {:error, changeset} ->
+              IO.inspect(changeset.errors, label: "❌ Lỗi khi cập nhật output_path")
+          end
 
-            Logger.info("Starting pipeline for stream key: #{stream_key} + #{stream_key_current}")
+          Logger.info("Starting pipeline for stream key: #{stream_key} + #{stream_key_current}")
 
-            # Xóa file output.mp4
-            File.mkdir_p("output/#{stream_id}")
+          # Xóa file output.mp4
+          File.mkdir_p("output/#{stream_id}")
 
-            Logger.info("Client ref: #{inspect(client_ref)}")
+          Logger.info("Client ref: #{inspect(client_ref)}")
 
-            # Tạo pipeline stream
-            {:ok, _sup, pid} =
-              Membrane.Pipeline.start_link(Gchatdemo1.Pipeline, %{
-                client_ref: client_ref,
-                app: streamer_id,
-                stream_key: stream_key
-              })
+          # Tạo pipeline stream
+          {:ok, _sup, pid} =
+            Membrane.Pipeline.start_link(Gchatdemo1.Pipeline, %{
+              client_ref: client_ref,
+              app: streamer_id,
+              stream_key: stream_key
+            })
 
-            {Gchatdemo1.ClientHandler, %{pipeline: pid, streamer_id: streamer_id}}
+          {Gchatdemo1.ClientHandler, %{pipeline: pid, streamer_id: streamer_id}}
         else
           Logger.error("Invalid stream key: #{stream_key}")
           terminate_client_ref(client_ref, streamer_id)
@@ -89,12 +91,11 @@ defmodule Gchatdemo1.Application do
     }
 
     children = [
-       # Start the RTMP server
-       %{
+      # Start the RTMP server
+      %{
         id: Membrane.RTMPServer,
         start: {Membrane.RTMPServer, :start_link, [rtmp_server_options]}
       },
-
       Gchatdemo1Web.Telemetry,
       Gchatdemo1.Repo,
       {DNSCluster, query: Application.get_env(:gchatdemo1, :dns_cluster_query) || :ignore},
@@ -120,7 +121,6 @@ defmodule Gchatdemo1.Application do
     Gchatdemo1Web.Endpoint.config_change(changed, removed)
     :ok
   end
-
 
   defp confirm_action do
     topic = "confirm_modal"
