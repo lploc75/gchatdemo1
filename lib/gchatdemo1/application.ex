@@ -33,14 +33,7 @@ defmodule Gchatdemo1.Application do
         # Kiểm tra xem stream_key có hợp lệ không
         if stream_key == stream_key_current and stream_key_current != nil and streamer_id != nil do
           # Gọi modal xác nhận trước khi tạo stream
-          result_confirm = confirm_action()
-          Logger.info("User selected: #{result_confirm}")
-          if result_confirm == false do
-            Logger.info("Tắt khi không xác nhận")
-            Logger.info("Client ref khi tắt ko xác nhận: #{inspect(client_ref)} + streamer_id: #{streamer_id}")
-            Logger.info("Đợi 1 phút để stream tự tắt")
-            terminate_client_ref(client_ref, streamer_id)
-          else
+
 
             # Tạo một stream_infor mới
             IO.inspect(streamer_id, label: "📌 streamer_id trước khi tạo stream")
@@ -88,7 +81,6 @@ defmodule Gchatdemo1.Application do
               })
 
             {Gchatdemo1.ClientHandler, %{pipeline: pid, streamer_id: streamer_id}}
-          end
         else
           Logger.error("Invalid stream key: #{stream_key}")
           terminate_client_ref(client_ref, streamer_id)
