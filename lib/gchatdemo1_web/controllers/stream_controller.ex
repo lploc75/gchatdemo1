@@ -177,4 +177,11 @@ defmodule Gchatdemo1Web.StreamController do
     end
   end
 
+  def get_streamer_id(conn, %{"name" => streamer_name}) do
+    case Streams.get_streamer_id_by_name(streamer_name) do
+      nil -> json(conn, %{error: "Streamer not found"})
+      streamer_id -> json(conn, %{id: streamer_id})
+    end
+  end
+
 end

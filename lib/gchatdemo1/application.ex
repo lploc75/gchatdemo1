@@ -121,19 +121,6 @@ defmodule Gchatdemo1.Application do
     Gchatdemo1Web.Endpoint.config_change(changed, removed)
     :ok
   end
-
-  defp confirm_action do
-    topic = "confirm_modal"
-    parent = self()
-
-    # Gửi sự kiện yêu cầu xác nhận đến LiveView
-    Phoenix.PubSub.broadcast(Gchatdemo1.PubSub, topic, {:show_modal, parent})
-
-    receive do
-      {:modal_result, response} -> response
-    end
-  end
-
   def terminate_client_ref(client_ref, streamer_id) do
     Membrane.Pipeline.terminate(client_ref,
       timeout: 5000,
