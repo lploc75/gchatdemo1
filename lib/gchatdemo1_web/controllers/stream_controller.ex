@@ -122,7 +122,7 @@ defmodule Gchatdemo1Web.StreamController do
         |> json(%{error: "Streamer not found"})
 
       streamer_id ->
-        streams = Streams.get_all_stream_old()
+        streams = Streams.get_all_stream_old(streamer_id)
         |> Enum.filter(fn stream -> stream.streamer_id == streamer_id end)
 
         json(conn, %{streams: streams})
