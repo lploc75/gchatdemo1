@@ -30,6 +30,22 @@ defmodule Gchatdemo1Web.Router do
     get "/users/reset_password/:token", PageController, :reset_password
     get "/users/confirm/:token", PageController, :confirm_email
     get "/users/confirm", PageController, :confirm_email_instructions
+
+     # Thêm rouute cho livestreamn
+     get "/video/*filename", HlsController, :index
+     get "/stream/:streamer_name/custom_stream", CustomStreamController, :index
+
+     live "/watch_video/:id", VideoLive
+     get "/stream_key/:streamer_name", StreamSettingController, :index
+     live "/stream", StreamNowListLive
+
+     # Cho xem restream
+     get "/watch/:streamer_name", StreamListOldController, :index
+     live "/watch/:display_name/:stream_id", WatchOldLive
+     get "/watch_restream/:streamer_name/:stream_id/:filename", HlsController, :watch
+     # List streamer
+
+     live "/streamers", StreamerListLive
   end
 
   # Các route yêu cầu user phải đăng nhập
@@ -41,22 +57,6 @@ defmodule Gchatdemo1Web.Router do
     get "/users/settings/confirm_email/:token", PageController, :user_setting_confirm_email
     get "/list_friends", PageController, :list_friends
     get "/friend_requests", PageController, :friend_requests_page
-
-    # Thêm rouute cho livestreamn
-    get "/video/*filename", HlsController, :index
-    get "/stream/:streamer_name/custom_stream", CustomStreamController, :index
-
-    live "/watch_video/:id", VideoLive
-    get "/stream_key/:streamer_name", StreamSettingController, :index
-    live "/stream", StreamNowListLive
-
-    # Cho xem restream
-    get "/watch/:streamer_name", StreamListOldController, :index
-    live "/watch/:display_name/:stream_id", WatchOldLive
-    get "/watch_restream/:streamer_name/:stream_id/:filename", HlsController, :watch
-    # List streamer
-
-    live "/streamers", StreamerListLive
   end
 
   # Other scopes may use custom stacks.
