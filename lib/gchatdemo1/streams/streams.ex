@@ -165,12 +165,12 @@ defmodule Gchatdemo1.Streams do
     end
   end
 
-  def get_all_stream_old(streamer_id) do
+  def get_all_stream_old do
     Repo.all(
       from s in StreamInfor,
         join: ss in Gchatdemo1.StreamSetting,
         on: s.streamer_id == ss.streamer_id,
-        where: s.stream_status == false and s.streamer_id == ^streamer_id,
+        where: s.stream_status == false,
         select: %{
           stream_id: s.id,
           streamer_id: s.streamer_id,
