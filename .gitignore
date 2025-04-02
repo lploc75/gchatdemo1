@@ -35,3 +35,5 @@ gchatdemo1-*.tar
 npm-debug.log
 /assets/node_modules/
 
+/output/140
+

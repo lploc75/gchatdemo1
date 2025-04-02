@@ -4,7 +4,7 @@ defmodule Gchatdemo1.Pipeline do
   alias Membrane.RTMP.SourceBin
 
   @segment_duration Membrane.Time.seconds(5)
-  @transcode_targets [{1080, 60}, {720, 60}, {180, 60}]
+  @transcode_targets [{1080, 48}, {720, 48}, {180, 48}]
 
   @impl true
   def handle_init(_context, %{client_ref: client_ref, app: streamer_id}) do
