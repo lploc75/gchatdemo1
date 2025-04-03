@@ -23,36 +23,40 @@ defmodule Gchatdemo1Web.Router do
     pipe_through :browser
 
     get "/", PageController, :home
-    get "/dashboard", PageController, :dashboard
-    post "/friends", PageController, :friends
-    post "/users/:id/send_request", PageController, :send_friend_request
-    post "/users/:id/cancel_request", PageController, :cancel_friend_request
-    # Route hiển thị danh sách lời mời
-    get "/friend_requests", PageController, :friend_requests
-    # Route xử lý chấp nhận/từ chối lời mời
-    post "/friend_requests/:id/accept", PageController, :accept_friend_request
-    post "/friend_requests/:id/decline", PageController, :decline_friend_request
-    # Hiện thị danh sách bạn bè
-    get "/friends", PageController, :friends
-    # Thêm route hủy kết bạn
-    delete "/unfriend/:friend_id", PageController, :unfriend
+    delete "/users/log_out", UserSessionController, :delete
+    get "/users/register", PageController, :register
+    get "/users/log_in", PageController, :log_in
+    get "/users/forgot_password", PageController, :forgot_password
+    get "/users/reset_password/:token", PageController, :reset_password
+    get "/users/confirm/:token", PageController, :confirm_email
+    get "/users/confirm", PageController, :confirm_email_instructions
 
-    # Thêm rouute cho livestreamn
+     # Thêm rouute cho livestreamn
+     get "/video/*filename", HlsController, :index
+     get "/stream/:streamer_name/custom_stream", CustomStreamController, :index
 
-    get "/video/*filename", HlsController, :index
-    get "/stream/:streamer_name/custom_stream", CustomStreamController, :index
+     live "/watch_video/:id", VideoLive
+     get "/stream_key/:streamer_name", StreamSettingController, :index
+     live "/stream", StreamNowListLive
 
-    live "/watch_video/:id", VideoLive
-    get "/stream_key/:streamer_name", StreamSettingController, :index
-    live "/stream", StreamNowListLive
+     # Cho xem restream
+     get "/watch/:streamer_name", StreamListOldController, :index
+     live "/watch/:display_name/:stream_id", WatchOldLive
+     get "/watch_restream/:streamer_name/:stream_id/:filename", HlsController, :watch
+     # List streamer
 
-    # Cho xem restream
-    get "/watch/:streamer_name", StreamListOldController, :index
-    live "/watch/:display_name/:stream_id", WatchOldLive
-    get "/watch_restream/:streamer_name/:stream_id/:filename", HlsController, :watch
-    # List streamer
+     live "/streamers", StreamerListLive
+  end
 
-    live "/streamers", StreamerListLive
+  # Các route yêu cầu user phải đăng nhập
+  scope "/", Gchatdemo1Web do
+    pipe_through [:browser, :require_authenticated_user]
+    get "/", PageController, :home
+    get "/dashboard", PageController, :index
+    get "/users/settings", PageController, :user_setting
+    get "/users/settings/confirm_email/:token", PageController, :user_setting_confirm_email
+    get "/list_friends", PageController, :list_friends
+    get "/friend_requests", PageController, :friend_requests_page
   end
 
   # Other scopes may use custom stacks.
@@ -77,31 +81,13 @@ defmodule Gchatdemo1Web.Router do
     end
   end
 
-  ## Authentication routes
-
-  scope "/", Gchatdemo1Web do
-    pipe_through [:browser, :redirect_if_user_is_authenticated]
-
-    live_session :redirect_if_user_is_authenticated,
-      on_mount: [{Gchatdemo1Web.UserAuth, :redirect_if_user_is_authenticated}] do
-      live "/users/register", UserRegistrationLive, :new
-      live "/users/log_in", UserLoginLive, :new
-      live "/users/reset_password", UserForgotPasswordLive, :new
-      live "/users/reset_password/:token", UserResetPasswordLive, :edit
-    end
-
-    post "/users/log_in", UserSessionController, :create
-  end
 
   scope "/", Gchatdemo1Web do
     pipe_through [:browser, :require_authenticated_user]
 
     live_session :require_authenticated_user,
       on_mount: [{Gchatdemo1Web.UserAuth, :ensure_authenticated}] do
-      live "/users/settings", UserSettingsLive, :edit
-      live "/users/settings/confirm_email/:token", UserSettingsLive, :confirm_email
-      # Thêm route cho trang chat
-      live "/chat", ChatLive, :index
+      live "/chat", ChatLive, :index # Route của chat nhóm
     end
   end
 
@@ -120,10 +106,38 @@ defmodule Gchatdemo1Web.Router do
   scope "/api", Gchatdemo1Web do
     pipe_through :api
     # pipe_through [:api, :require_authenticated_user]
+    get "/users/check_reset_token", UserResetPasswordController, :check_token  # Kiểm tra token
+    post "/register", AuthController, :register    # Đăng ký
+    post "/users/log_in", UserSessionController, :create   # Đăng nhập
+    post "/users/reset_password/request", UserForgotPasswordController, :send_reset_email  # Gửi email reset
+    post "/users/reset_password/confirm", UserResetPasswordController, :reset_password  # Đặt lại mật khẩu
+    post "/users/send_confirmation", UserConfirmationController, :send_instructions # gửi email xác nhận lại
+    post "/users/confirm", UserConfirmationController, :confirm_account # xác nhận tài khoản
+    # Trang user setting
+    get "/users/avatar/presign", UserSettingController, :presign_avatar_upload
+    post "/users/avatar/update", UserSettingController, :update_avatar
+    post "/users/settings/update_email", UserSettingController, :update_email
+    post "/users/settings/update_password", UserSettingController, :update_password
+    get "/users/settings/confirm_email/:token", UserSettingController, :confirm_email
+    post "/users/settings/update_display_name", UserSettingController, :update_display_name
 
-    # Thêm route này để lấy token
+    get "/dashboard", PageController, :dashboard
+    post "/friends", PageController, :friends
+    post "/users/:id/send_request", PageController, :send_friend_request
+    post "/users/:id/cancel_request", PageController, :cancel_friend_request
+    # Route hiển thị danh sách lời mời
+    get "/friend_requests", PageController, :friend_requests
+    # Route xử lý chấp nhận/từ chối lời mời
+    post "/friend_requests/:id/accept", PageController, :accept_friend_request
+    post "/friend_requests/:id/decline", PageController, :decline_friend_request
+    # Hiện thị danh sách bạn bè
+    get "/list_friends", PageController, :friends
+    # Thêm route hủy kết bạn
+    delete "/unfriend/:friend_id", PageController, :unfriend
+
+    # Route này để lấy token
     get "/user_token", UserSessionController, :get_token
-
+    get "/users/me", UserSessionController, :get_user_info    # Lấy thông tin user
     # Lấy danh sách bạn bè của người dùng
     get "/friends", ChatController, :get_friends
     # Lấy danh sách bạn bè chưa trong group
@@ -152,10 +166,7 @@ defmodule Gchatdemo1Web.Router do
     # Chuyển tiếp tin nhắn
     post "/messages/forward", ChatController, :forward_message
     # Cập nhật trạng thái tất cả tin nhắn của 1 người dùng trong 1 nhóm
-    post "/messages/conversation/:conversation_id/mark-seen",
-         ChatController,
-         :mark_messages_as_seen
-
+    post "/messages/conversation/:conversation_id/mark-seen", ChatController, :mark_messages_as_seen
     # Cập nhật trạng thái của một tin nhắn
     post "/messages/:message_id/mark-seen", ChatController, :mark_single_message_as_seen
 
