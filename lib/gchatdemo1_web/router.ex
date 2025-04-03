@@ -189,6 +189,8 @@ defmodule Gchatdemo1Web.Router do
     put "/stream/update-setting", StreamController, :update_stream_setting
     # oldstream
     get "/video/:stream_id", StreamController, :get_video_info
+    # tutorial
+    get "/tutorial-stream/:name", StreamController, :get_streamer_id
   end
 
   scope "/", Gchatdemo1Web do
