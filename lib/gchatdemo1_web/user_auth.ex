@@ -25,7 +25,7 @@ defmodule Gchatdemo1Web.UserAuth do
   disconnected on log out. The line can be safely removed
   if you are not using LiveView.
   """
-  ef log_in_user(conn, user, params \\ %{}) do
+  def log_in_user(conn, user, params \\ %{}) do
     token = Accounts.generate_user_session_token(user)
     tokenBase64 = Base.encode64(token)
 
