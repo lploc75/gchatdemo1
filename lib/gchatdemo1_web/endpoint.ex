@@ -10,7 +10,8 @@ defmodule Gchatdemo1Web.Endpoint do
     store: :cookie,
     key: "_gchatdemo1_key",
     signing_salt: "XN2+KhRs",
-    same_site: "Lax"
+    same_site: "None",
+    secure: false  # ⚠️ set true nếu dùng HTTPS
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
@@ -43,7 +44,9 @@ defmodule Gchatdemo1Web.Endpoint do
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
-  plug CORSPlug, origin: "*"
+  plug CORSPlug,
+  origin: ["http://localhost:5173"],
+  credentials: true
 
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
