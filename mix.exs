@@ -62,7 +62,7 @@ defmodule Gchatdemo1.MixProject do
       {:dns_cluster, "~> 0.1.1"},
       {:cloudex, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
-
+      {:phoenix_pubsub, "~> 2.1"},
 
       ## Membrane deps
       {:membrane_core, "~> 1.0"},

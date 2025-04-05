@@ -6,10 +6,7 @@ import Config
 # and secrets from environment variables or elsewhere. Do not define
 # any compile-time configuration in here, as it won't be applied.
 # The block below contains prod specific runtime configuration.
-config :cloudex,
-  api_key: "335681169415731",
-  secret: "wARMUj_KXlpHmJp9b7gczCpfFmg",
-  cloud_name: "djyr2tc78"
+
 # ## Using releases
 #
 # If you use `mix release`, you need to explicitly enable the server

@@ -1,7 +1,7 @@
 defmodule Gchatdemo1.Chat.MessageStatus do
   use Ecto.Schema
   import Ecto.Changeset
-
+  @derive {Jason.Encoder, only: [:id, :message_id, :user_id, :status, :inserted_at, :updated_at]}
   schema "message_statuses" do
     belongs_to :message, Gchatdemo1.Chat.Message
     belongs_to :user, Gchatdemo1.Accounts.User

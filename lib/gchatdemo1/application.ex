@@ -112,7 +112,8 @@ defmodule Gchatdemo1.Application do
       # Start a worker by calling: Gchatdemo1.Worker.start_link(arg)
       # {Gchatdemo1.Worker, arg},
       # Start to serve requests, typically the last entry
-      Gchatdemo1Web.Endpoint
+      Gchatdemo1Web.Endpoint,
+      Gchatdemo1Web.Presence
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

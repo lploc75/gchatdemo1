@@ -1,7 +1,7 @@
 defmodule Gchatdemo1.Chat.Reaction do
   use Ecto.Schema
   import Ecto.Changeset
-
+  @derive {Jason.Encoder, only: [:id, :message_id, :user_id, :emoji, :inserted_at, :updated_at]}
   schema "reactions" do
     field :emoji, :string
     belongs_to :user, Gchatdemo1.Accounts.User

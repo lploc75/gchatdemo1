@@ -3,7 +3,23 @@ defmodule Gchatdemo1.Chat.Message do
   import Ecto.Changeset
 
   @derive {Jason.Encoder,
-           only: [:user_id, :conversation_id, :content, :message_type, :is_edited, :is_recalled]}
+  only: [
+    :user_id,
+    :conversation_id,
+    :content,
+    :message_type,
+    :is_edited,
+    :is_recalled,
+    :is_deleted,
+    :is_forwarded,
+    :id,
+    :inserted_at,
+    :reactions,
+    :message_statuses,
+    :user,
+    :conversation,
+    :reply_to_id
+  ]}
   schema "messages" do
     belongs_to :user, Gchatdemo1.Accounts.User
     belongs_to :conversation, Gchatdemo1.Chat.Conversation

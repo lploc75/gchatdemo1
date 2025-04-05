@@ -518,7 +518,6 @@ defmodule Gchatdemo1.Accounts do
     )
   end
 
-  # <---- THÊM HÀM GET_USER ---->
   @doc """
   Gets a user by ID.
   Returns nil if not found.

@@ -1,5 +1,6 @@
 defmodule Gchatdemo1.Messaging do
   import Ecto.Query
+  alias Expo.Messages
   alias Gchatdemo1.Repo
   alias Gchatdemo1.Chat.{Message}
   alias Gchatdemo1.Chat.{Reaction}
@@ -9,20 +10,25 @@ defmodule Gchatdemo1.Messaging do
   # Gửi tin nhắn
   def send_message(user_id, conversation_id, content, opts \\ %{}) do
     Repo.transaction(fn ->
-      # Tạo message như bình thường
+      reply_to_id = opts[:reply_to_id]
+
+      if reply_to_id do
+        case Repo.get_by(Message, id: reply_to_id, conversation_id: conversation_id) do
+          nil -> Repo.rollback(:invalid_reply_to_id)
+          _ -> :ok
+        end
+      end
+
       {:ok, message} =
         %Message{}
         |> Message.changeset(%{
           user_id: user_id,
           conversation_id: conversation_id,
           content: content,
-          is_forwarded: opts[:is_forwarded] || false,
-          original_sender_id: opts[:original_sender_id],
-          reply_to_id: opts[:reply_to_id]
+          reply_to_id: reply_to_id
         })
         |> Repo.insert()
 
-      # Chỉ tạo một bản ghi MessageStatus cho người gửi
       status = %{
         message_id: message.id,
         user_id: user_id,
@@ -31,12 +37,16 @@ defmodule Gchatdemo1.Messaging do
         updated_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
       }
 
-      # Chèn bản ghi trạng thái duy nhất
       Repo.insert_all(MessageStatus, [status], on_conflict: :nothing)
 
-      # Trả về message với các association đã preload
       message
-      |> Repo.preload([:user, :conversation, :reactions, :original_sender, :message_statuses])
+      |> Repo.preload([
+        :user,
+        :conversation,
+        :reactions,
+        :message_statuses,
+        reply_to: from(m in Message, select: [:id, :content])
+      ])
     end)
   end
 
@@ -47,7 +57,9 @@ defmodule Gchatdemo1.Messaging do
     |> Repo.update()
     |> case do
       {:ok, message} ->
-        message_with_assoc = Repo.preload(message, [:user, :conversation, :reactions])
+        message_with_assoc =
+          Repo.preload(message, [:user, :conversation, :reactions, :message_statuses])
+
         {:ok, message_with_assoc}
 
       {:error, changeset} ->
@@ -68,7 +80,7 @@ defmodule Gchatdemo1.Messaging do
       case Message.changeset(message, %{is_recalled: true}) |> Repo.update() do
         {:ok, message} ->
           # Preload các associations để trả về dữ liệu đầy đủ
-          message_with_assoc = Repo.preload(message, [:user, :conversation, :reactions])
+          message_with_assoc = Repo.preload(message, [:user, :conversation, reactions: []])
           {:ok, message_with_assoc}
 
         {:error, changeset} ->
@@ -84,7 +96,7 @@ defmodule Gchatdemo1.Messaging do
     Repo.all(
       from m in Message,
         where: m.conversation_id == ^conversation_id,
-        # Thêm message_statuses
+        # Đảm bảo preload đủ
         preload: [:reactions, :user, :conversation, :message_statuses],
         order_by: [asc: m.inserted_at]
     )
@@ -115,28 +127,43 @@ defmodule Gchatdemo1.Messaging do
         join: ms in MessageStatus,
         on: ms.message_id == m.id,
         where:
-          m.conversation_id == ^conversation_id and ms.user_id == ^reader_id and
+          m.conversation_id == ^conversation_id and
+            ms.user_id == ^reader_id and
             ms.status != "seen",
         select: m.id
       )
       |> Repo.all()
 
     # Cập nhật hàng loạt
-    from(ms in MessageStatus,
-      where: ms.message_id in ^message_ids and ms.user_id == ^reader_id
-    )
-    |> Repo.update_all(set: [status: "seen"])
+    {updated_count, _} =
+      from(ms in MessageStatus,
+        where: ms.message_id in ^message_ids and ms.user_id == ^reader_id
+      )
+      |> Repo.update_all(set: [status: "seen"])
+
+    case updated_count do
+      0 -> {:error, :no_messages_to_update}
+      _ -> {:ok, updated_count}
+    end
   end
 
-  def delete_message(message_id) do
-    message = Repo.get(Message, message_id)
-    Repo.delete(message)
-  end
-
-  def get_message(message_id) do
+  def soft_delete_message(message_id) do
     Message
-    |> Repo.get(message_id)
-    |> Repo.preload([:user, :conversation, :original_sender, :reactions])
+    |> where(id: ^message_id)
+    |> update(set: [is_deleted: true])
+    |> Repo.update_all([])
+  end
+
+  @spec get_message(integer()) :: {:ok, Messages.t()} | {:error, String.t()}
+  def get_message(message_id) do
+    case Repo.get(Message, message_id) do
+      nil ->
+        {:error, "Message not found"}
+
+      message ->
+        message = Repo.preload(message, [:user, :conversation, :original_sender, :reactions])
+        {:ok, message}
+    end
   end
 
   def add_reaction(message_id, user_id, emoji) do
@@ -226,8 +253,9 @@ defmodule Gchatdemo1.Messaging do
     end
   end
 
+  @spec get_or_create_conversation_forward(integer(), integer()) ::
+          {:ok, integer()} | {:error, term()}
   def get_or_create_conversation_forward(user1_id, user2_id) do
-    # Tìm conversation_id nếu cả hai user cùng trong một nhóm
     conversation_id =
       from(gm1 in Gchatdemo1.Chat.GroupMember,
         join: gm2 in Gchatdemo1.Chat.GroupMember,
@@ -240,7 +268,6 @@ defmodule Gchatdemo1.Messaging do
 
     case conversation_id do
       nil ->
-        # Nếu chưa có, tạo mới conversation
         changeset =
           Gchatdemo1.Chat.Conversation.changeset(%Gchatdemo1.Chat.Conversation{}, %{
             name: "Private Chat",
@@ -250,28 +277,23 @@ defmodule Gchatdemo1.Messaging do
 
         case Repo.insert(changeset) do
           {:ok, new_conversation} ->
-            # Thêm user1 vào bảng `group_members`
             Repo.insert!(%Gchatdemo1.Chat.GroupMember{
               conversation_id: new_conversation.id,
               user_id: user1_id
             })
 
-            # Thêm user2 vào bảng `group_members`
             Repo.insert!(%Gchatdemo1.Chat.GroupMember{
               conversation_id: new_conversation.id,
               user_id: user2_id
             })
 
-            # Trả về {:ok, conversation_id}
             {:ok, new_conversation.id}
 
           {:error, changeset} ->
-            # Trả về {:error, reason} nếu có lỗi
             {:error, changeset}
         end
 
       conversation_id ->
-        # Nếu đã tồn tại, trả về {:ok, conversation_id}
         {:ok, conversation_id}
     end
   end
@@ -312,7 +334,7 @@ defmodule Gchatdemo1.Messaging do
     from(pm in PinnedMessage,
       join: m in assoc(pm, :message),
       where: pm.conversation_id == ^conversation_id and m.is_recalled == false,
-      preload: [message: :user]
+      preload: [message: [:user, :reactions, :message_statuses, :conversation]]
     )
     |> Repo.all()
     |> Enum.map(& &1.message)
@@ -337,17 +359,35 @@ defmodule Gchatdemo1.Messaging do
       ) do
     duration = if started_at && ended_at, do: NaiveDateTime.diff(ended_at, started_at), else: 0
 
-    %CallHistory{}
-    |> CallHistory.changeset(%{
-      conversation_id: conversation_id,
-      caller_id: caller_id,
-      callee_id: callee_id,
-      status: status,
-      call_type: "video",
-      started_at: started_at,
-      ended_at: ended_at,
-      duration: duration
-    })
-    |> Repo.insert()
+    case %CallHistory{}
+         |> CallHistory.changeset(%{
+           conversation_id: conversation_id,
+           caller_id: caller_id,
+           callee_id: callee_id,
+           status: status,
+           call_type: "video",
+           started_at: started_at,
+           ended_at: ended_at,
+           duration: duration
+         })
+         |> Repo.insert() do
+      {:ok, call_history} ->
+        # Preload thông tin caller và callee
+        call_history = Repo.preload(call_history, [:caller, :callee])
+        {:ok, call_history}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  def get_conversation_friend(conversation_id, current_user_id) do
+    conversation = get_conversation(conversation_id)
+
+    if conversation && !conversation.is_group do
+      Enum.find_value(conversation.group_members, fn member ->
+        if member.user_id != current_user_id, do: member.user_id, else: nil
+      end)
+    end
   end
 end

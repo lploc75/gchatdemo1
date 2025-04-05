@@ -1,7 +1,21 @@
 defmodule Gchatdemo1.Chat.CallHistory do
   use Ecto.Schema
   import Ecto.Changeset
-
+  @derive {Jason.Encoder,
+  only: [
+    :id,
+    :call_type,
+    :status,
+    :started_at,
+    :ended_at,
+    :duration,
+    :caller_id,
+    :callee_id,
+    :conversation_id,
+    :caller,
+    :callee,
+    :inserted_at
+  ]}
   schema "call_history" do
     field :call_type, :string
     field :status, :string

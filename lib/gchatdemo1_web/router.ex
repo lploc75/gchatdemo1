@@ -30,6 +30,7 @@ defmodule Gchatdemo1Web.Router do
     get "/users/reset_password/:token", PageController, :reset_password
     get "/users/confirm/:token", PageController, :confirm_email
     get "/users/confirm", PageController, :confirm_email_instructions
+    get "/messages/:conversation_id", PageController, :chat
 
      # Thêm rouute cho livestreamn
      get "/video/*filename", HlsController, :index
@@ -134,6 +135,11 @@ defmodule Gchatdemo1Web.Router do
     get "/list_friends", PageController, :friends
     # Thêm route hủy kết bạn
     delete "/unfriend/:friend_id", PageController, :unfriend
+    post "/messages", MessageController, :create
+    # Router chuyển tiếp tin nhắn
+    post "/forward_message", MessageController, :forward_message
+    # Route lấy dữ liệu messages (JSON)
+    get "/messages/:conversation_id", MessageController, :show
 
     # Route này để lấy token
     get "/user_token", UserSessionController, :get_token
