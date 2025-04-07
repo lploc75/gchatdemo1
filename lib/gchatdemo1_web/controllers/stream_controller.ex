@@ -33,6 +33,9 @@ defmodule Gchatdemo1Web.StreamController do
           |> json(%{error: "Not a streamer"})
         end
     end
+
+    current_user = conn.assigns.current_user
+    IO.inspect(current_user, label: "Current user in stream controller")
   end
 
   # Lấy stream key
@@ -47,6 +50,8 @@ defmodule Gchatdemo1Web.StreamController do
           stream_key -> json(conn, %{stream_key: stream_key})
         end
     end
+    current_user = conn.assigns.current_user
+    IO.inspect(current_user, label: "Current user in stream controller")
   end
 
   # Tạo/Cập nhật stream key
@@ -122,14 +127,19 @@ defmodule Gchatdemo1Web.StreamController do
         |> json(%{error: "Streamer not found"})
 
       streamer_id ->
-        streams = Streams.get_all_stream_old()
-        |> Enum.filter(fn stream -> stream.streamer_id == streamer_id end)
+        streams =
+          Streams.get_all_stream_old(streamer_id)
+          |> Enum.filter(fn stream -> stream.streamer_id == streamer_id end)
 
         json(conn, %{streams: streams})
     end
   end
 
-  def update_stream_setting(conn, %{"streamer_name" => streamer_name, "title" => title, "description" => description}) do
+  def update_stream_setting(conn, %{
+        "streamer_name" => streamer_name,
+        "title" => title,
+        "description" => description
+      }) do
     case Streams.get_streamer_id_by_name(streamer_name) do
       nil ->
         conn
@@ -137,7 +147,10 @@ defmodule Gchatdemo1Web.StreamController do
         |> json(%{error: "Streamer not found"})
 
       streamer_id ->
-        case Streams.update_stream_setting_for_user(streamer_id, %{title: title, description: description}) do
+        case Streams.update_stream_setting_for_user(streamer_id, %{
+               title: title,
+               description: description
+             }) do
           {:ok, _stream_setting} ->
             json(conn, %{message: "Cập nhật thành công"})
 
@@ -174,6 +187,13 @@ defmodule Gchatdemo1Web.StreamController do
               source: stream.output_path
             })
         end
+    end
+  end
+
+  def get_streamer_id(conn, %{"name" => streamer_name}) do
+    case Streams.get_streamer_id_by_name(streamer_name) do
+      nil -> json(conn, %{error: "Streamer not found"})
+      streamer_id -> json(conn, %{id: streamer_id})
     end
   end
 

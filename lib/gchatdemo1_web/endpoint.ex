@@ -10,8 +10,7 @@ defmodule Gchatdemo1Web.Endpoint do
     store: :cookie,
     key: "_gchatdemo1_key",
     signing_salt: "XN2+KhRs",
-    same_site: "None",
-    secure: false  # ⚠️ set true nếu dùng HTTPS
+    same_site: "Lax"
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
