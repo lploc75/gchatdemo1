@@ -59,12 +59,14 @@ defmodule Gchatdemo1.Accounts.User do
     |> maybe_validate_unique_email(opts)
   end
 
-
   defp validate_password(changeset, opts) do
     changeset
     |> validate_required([:password])
-    |> validate_length(:password, min: 8, max: 50)
-    # Examples of additional password validation:
+    |> validate_length(:password,
+    min: 8,
+    max: 50,
+    message: "Mật khẩu phải có ít nhất %{count} ký tự"
+  )    # Examples of additional password validation:
     # |> validate_format(:password, ~r/[a-z]/, message: "at least one lower case character")
     # |> validate_format(:password, ~r/[A-Z]/, message: "at least one upper case character")
     # |> validate_format(:password, ~r/[!?@#$%^&*_0-9]/, message: "at least one digit or punctuation character")
