@@ -46,14 +46,19 @@ defmodule Gchatdemo1.Accounts.User do
     |> validate_email(opts)
     |> validate_password(opts)
   end
-
   defp validate_email(changeset, opts) do
     changeset
     |> validate_required([:email])
-    |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/, message: "phải có ký tự @ và không có khoảng trống")
     |> validate_length(:email, max: 160)
+    |> validate_format(
+      :email,
+      ~r/^[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*@gmail\.[a-zA-Z]{2,}$/,
+      message:
+        "Email phải hợp lệ, phần trước '@' chỉ gồm chữ hoặc số, không chứa dấu chấm liên tục, và tên miền phải là 'gmail.xxx'."
+    )
     |> maybe_validate_unique_email(opts)
   end
+
 
   defp validate_password(changeset, opts) do
     changeset
