@@ -53,6 +53,10 @@ defmodule Gchatdemo1Web.PageController do
     render(conn, :friend_requests, layout: false)
   end
 
+  def chat(conn, %{"conversation_id" => conv_id}) do
+    render(conn, :chat, conversation_id: conv_id)
+  end
+
   # Dashboard chỉ hiển thị thông tin chung (không còn chứa form tìm kiếm bạn bè)
   def dashboard(conn, _params) do
     # Lấy trực tiếp struct User từ conn.assigns
