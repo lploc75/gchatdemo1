@@ -185,6 +185,14 @@ defmodule Gchatdemo1.Accounts.User do
     user
     |> cast(attrs, [:display_name])
     |> validate_required([:display_name])
-    |> validate_length(:display_name, min: 3, max: 50)
+    |> validate_length(:display_name,
+      min: 3,
+      max: 20,
+      message: "Tên hiển thị phải từ 3 đến 20 ký tự"
+    )
+    |> validate_format(:display_name, ~r/^[a-zA-Z0-9]+$/,
+      message: "Tên hiển thị chỉ được chứa chữ cái và số"
+    )
   end
+
 end
