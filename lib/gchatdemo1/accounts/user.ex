@@ -65,7 +65,7 @@ defmodule Gchatdemo1.Accounts.User do
     |> validate_length(:password,
     min: 8,
     max: 50,
-    message: "Mật khẩu phải có ít nhất %{count} ký tự"
+    message: "Mật khẩu phải có ít nhất 8 ký tự"
   )    # Examples of additional password validation:
     # |> validate_format(:password, ~r/[a-z]/, message: "at least one lower case character")
     # |> validate_format(:password, ~r/[A-Z]/, message: "at least one upper case character")
