@@ -3,6 +3,7 @@ defmodule Gchatdemo1Web.UserSocket do
 
   ## Định nghĩa các channels
   channel "group_chat:*", Gchatdemo1Web.GroupChatChannel
+  channel "conversation:*", Gchatdemo1Web.ConversationChannel
 
   ## Authentication
   def connect(%{"token" => token}, socket, _connect_info) do
