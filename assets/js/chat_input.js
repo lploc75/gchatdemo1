@@ -37,7 +37,10 @@ class ChatInput extends LitElement {
     showForwardModal: { type: Boolean },
     forwardMessage: { type: Object },
     friends: { type: Array },
-    replyingTo: { type: Number } // ID of the message being replied to
+    replyingTo: { type: Number }, // ID của tin nhắn đưuọc trả lời
+    typingUsers: { type: Array }, // Danh sách người dùng đang gõ
+    firstUnreadMessageId: { type: Number }, // ID của tin nhắn chưa đọc đầu tiên
+    initialFirstUnreadMessageId: { type: Number }
   };
 
   constructor() {
@@ -73,6 +76,12 @@ class ChatInput extends LitElement {
     this.forwardMessage = null;
     this.friends = [];
     this.replyingTo = null;
+    // Xử lí theo dõi gõ tin nhắn
+    this.typingUsers = [];
+    this.isTyping = false; // Biến để theo dõi trạng thái gõ
+    this.callTimeout = null; // Biến để đặt thời gian gọi
+    this.firstUnreadMessageId = null;
+    this.initialFirstUnreadMessageId = null;
   }
 
   async connectedCallback() {
@@ -155,12 +164,60 @@ class ChatInput extends LitElement {
       this.friendStatus = data.friend_status || 'offline';
       this.pinnedMessages = data.pinned_messages || [];
       this.callHistory = data.call_history || []; // Tải call_history từ API
+
+      // Tính toán tin nhắn chưa đọc đầu tiên dựa trên trạng thái ban đầu
+      this.initialFirstUnreadMessageId = this.findFirstUnreadMessage();
+      this.firstUnreadMessageId = this.initialFirstUnreadMessageId; // Ban đầu giống nhau
+      console.log('Initial first unread message ID:', this.initialFirstUnreadMessageId);
+
       console.log('Friend data:', this.friend);
       console.log('pinnedMessages data:', this.pinnedMessages);
       console.log('CallHistory data:', this.callHistory);
     } catch (error) {
       console.error('Lỗi tải tin nhắn:', error);
     }
+  }
+
+  // Hàm tìm tin nhắn chưa đọc đầu tiên
+  findFirstUnreadMessage() {
+    console.log('🔍 Finding first unread message...');
+    console.log('Current user ID:', this.currentUser.id);
+    console.log('Messages:', JSON.stringify(this.messages, null, 2));
+
+    for (const msg of this.messages) {
+      console.log(`Checking message ${msg.id} from user ${msg.user_id}`);
+
+      if (msg.user_id !== this.currentUser.id) {
+        console.log("→ Message is from another user");
+
+        // Kiểm tra message_statuses
+        if (msg.message_statuses && msg.message_statuses.length > 0) {
+          console.log(`Found ${msg.message_statuses.length} statuses for message ${msg.id}`);
+
+          // Log tất cả các message_statuses để kiểm tra dữ liệu
+          msg.message_statuses.forEach((status, index) => {
+            console.log(`Status ${index + 1}:`, status);
+          });
+
+          // Tìm status cho user hiện tại
+          const status = msg.message_statuses.find(s => s.user_id === this.currentUser.id);
+          console.log(`Status for current user in message ${msg.id}:`, status);
+
+          // Nếu có status và chưa được xem
+          if (status && status.status !== 'seen') {
+            console.log(`Found unread message ${msg.id} with status ${status.status}`);
+            return msg.id;
+          } else {
+            console.log(`Status is either not found or already seen for message ${msg.id}`);
+          }
+        } else {
+          console.log(`No message statuses found for message ${msg.id}`);
+        }
+      }
+    }
+
+    console.log('No unread messages found');
+    return null;
   }
 
   async fetchFriends() {
@@ -297,6 +354,7 @@ class ChatInput extends LitElement {
     this.channel.on('new_message', payload => {
       console.log('💬 New message received:', payload);
       this.messages = [...this.messages, payload.message];
+      this.firstUnreadMessageId = this.findFirstUnreadMessage(); // Cập nhật lại khi có tin nhắn mới
       this.requestUpdate();
     });
 
@@ -326,6 +384,8 @@ class ChatInput extends LitElement {
       console.log('🆕 Sau khi cập nhật:', JSON.stringify(this.messages[this.messages.length - 1]?.message_statuses));
 
       this.messages = [...this.messages]; // Deep clone để trigger render
+      // Chỉ cập nhật firstUnreadMessageId, không động đến initialFirstUnreadMessageId
+      this.firstUnreadMessageId = this.findFirstUnreadMessage();
       this.requestUpdate();
     });
 
@@ -410,6 +470,7 @@ class ChatInput extends LitElement {
     });
 
     this.channel.on('call_rejected', () => {
+      clearTimeout(this.callTimeout); // Hủy timeout khi nhận call_rejected
       this.endCall();
     });
 
@@ -427,6 +488,18 @@ class ChatInput extends LitElement {
 
     this.channel.on('new_call_history', payload => {
       this.messages = [...this.messages, payload.call_history].sort((a, b) => new Date(a.inserted_at) - new Date(b.inserted_at));
+      this.requestUpdate();
+    });
+
+    // Trong connectWebSocket(), thêm sự kiện mới
+    this.channel.on('user_typing', payload => {
+      console.log('📝 Received user_typing:', payload);
+      const userId = payload.user_id;
+      const isTyping = payload.typing;
+      this.typingUsers = isTyping
+        ? [...this.typingUsers.filter(id => id !== userId), userId]
+        : this.typingUsers.filter(id => id !== userId);
+      console.log('🔍 typingUsers:', this.typingUsers);
       this.requestUpdate();
     });
 
@@ -512,6 +585,10 @@ class ChatInput extends LitElement {
         console.log(`✅ Tin nhắn "${content}" đã được gửi thành công!`, response);
         contentInput.value = '';
         this.replyingTo = null; // Reset after sending
+        this.isTyping = false; // Reset trạng thái gõ
+        this.channel.push("typing_stop", {}) // Gửi typing_stop khi gửi tin nhắn
+          .receive("ok", () => console.log("Typing stop event sent after submit"))
+          .receive("error", err => console.error("Error sending typing stop:", err));
         console.log(`👀 Trạng thái bạn bè: ${this.friendStatus}`);
         if (this.friendStatus === 'Đang hoạt động') {
           console.log('📡 Gửi sự kiện mark_messages_as_seen...');
@@ -519,7 +596,10 @@ class ChatInput extends LitElement {
             conversation_id: this.conversationId,
             user_id: this.currentUser.id
           })
-            .receive('ok', resp => console.log('✅ Tin nhắn đã được xem', resp))
+            .receive('ok', resp => {
+              console.log('✅ Marked messages as seen', resp);
+              this.firstUnreadMessageId = null; // Xóa đường gạch ngang khi đã đọc hết
+            })
             .receive('error', err => console.error('❌ Lỗi khi đánh dấu tin nhắn đã xem', err));
         } else {
           console.warn('⚠️ Bạn bè không hoạt động, không gửi sự kiện mark_messages_as_seen.');
@@ -717,6 +797,11 @@ class ChatInput extends LitElement {
       this.channel.push("offer", offerPayload)
         .receive("ok", () => console.log("✅ Offer gửi thành công"))
         .receive("error", err => console.error("❌ Lỗi gửi offer:", err));
+      // Thêm timeout 30 giây
+      this.callTimeout = setTimeout(() => {
+        console.log("⏳ 30 giây trôi qua, không có phản hồi, tự động kết thúc cuộc gọi");
+        this.endCall();
+      }, 30000); // 30 giây
     } catch (err) {
       console.error("Lỗi khi bắt đầu cuộc gọi:", err);
     }
@@ -767,6 +852,7 @@ class ChatInput extends LitElement {
 
   async handleAnswer(answer) {
     if (this.callState === 'calling') {
+      clearTimeout(this.callTimeout); // Hủy timeout khi nhận answer
       const answerDesc = new RTCSessionDescription(answer);
       await this.peerConnection.setRemoteDescription(answerDesc);
 
@@ -825,12 +911,14 @@ class ChatInput extends LitElement {
       }
     }
 
+    clearTimeout(this.callTimeout); // Hủy timeout khi kết thúc cuộc gọi
     this.callState = 'idle';
     this.isCaller = false;
     this.remoteOffer = null;
     this.pendingCandidates = [];
     this.remoteStream = null;
     this.callStartedAt = null;
+    this.callTimeout = null; // Reset timeout
     this.requestUpdate();
   }
 
@@ -892,6 +980,22 @@ class ChatInput extends LitElement {
   cancelReply() {
     this.replyingTo = null;
     this.requestUpdate();
+  }
+
+  handleInput(e) {
+    const content = e.target.value.trim();
+    console.log('📝 Input content:', content);
+    if (content.length > 0 && !this.isTyping) {
+      this.isTyping = true;
+      this.channel.push("typing_start", {})
+        .receive("ok", () => console.log("Typing start event sent"))
+        .receive("error", err => console.error("Error sending typing start:", err));
+    } else if (content.length === 0 && this.isTyping) {
+      this.isTyping = false;
+      this.channel.push("typing_stop", {})
+        .receive("ok", () => console.log("Typing stop event sent"))
+        .receive("error", err => console.error("Error sending typing stop:", err));
+    }
   }
 
   // Hàm formatDate để hiển thị thời gian (cộng thêm 7 giờ nếu dữ liệu là UTC)
@@ -1278,6 +1382,7 @@ class ChatInput extends LitElement {
     justify-content: space-between;
     align-items: center;
     }
+
     .reply-info {
   font-size: 0.9em;
   color: #666;
@@ -1286,6 +1391,34 @@ class ChatInput extends LitElement {
   border-radius: 4px;
   margin-bottom: 4px;
 }
+  .typing-indicator {
+  padding: 8px 16px;
+  color:rgb(255, 25, 60);
+  font-style: italic;
+  font-size: 0.85em;
+  background-color: #f5f5f5;
+  border-radius: 12px;
+  margin: 4px 0;
+  display: inline-block;
+  transition: all 0.3s ease;
+  max-width: 80%;
+} 
+  .unread-line {
+    display: flex;
+    align-items: center;
+    margin: 10px 0;
+  }
+  .unread-line hr {
+    flex-grow: 1;
+    border: none;
+    border-top: 1px solid #ff4444;
+  }
+  .unread-line span {
+    padding: 0 10px;
+    color: #ff4444;
+    font-size: 0.9em;
+    font-weight: bold;
+  }
     `;
 
   render() {
@@ -1318,6 +1451,14 @@ class ChatInput extends LitElement {
       ? filteredItems.length > 0
         ? `Đã tìm thấy ${filteredItems.length} tin nhắn có chứa "${this.searchQuery}"`
         : 'Không tìm thấy tin nhắn nào'
+      : '';
+
+    const typingMessage = this.typingUsers.length > 0
+      ? html`<div class="typing-indicator">
+      ${this.typingUsers.map(id =>
+        id === this.friend.id ? html`${this.friend.email} đang soạn tin nhắn...` : ''
+      )}
+    </div>`
       : '';
 
     return html`
@@ -1410,16 +1551,25 @@ class ChatInput extends LitElement {
     
         <!-- Phần hiển thị tin nhắn và lịch sử cuộc gọi -->
         <div class="chat-messages">
-  ${filteredItems.map((item) => {
+  ${filteredItems.map((item, index) => {
           // Tìm tin nhắn gốc trong this.messages dựa trên reply_to_id
           const replyToMessage = item.reply_to_id
             ? this.messages.find(msg => msg.id === item.reply_to_id)
             : null;
-          console.log('Rendering item:', item.id, 'Reply_to_id:', item.reply_to_id, 'Reply_to_message:', replyToMessage);
           if (item.content) {
             // Xử lý tin nhắn
             const messageClass = item.user_id === this.currentUser?.id ? 'message-right' : 'message-left';
+            // Kiểm tra nếu đây là tin nhắn chưa đọc đầu tiên
+            const isFirstUnread = this.initialFirstUnreadMessageId === item.id;
             return html`
+            ${isFirstUnread
+                ? html`
+                <div class="unread-line">
+                  <hr />
+                  <span>Tin nhắn chưa đọc</span>
+                </div>
+              `
+                : ''}
         <div class="message-container">
           ${item.user_id !== this.currentUser?.id && item.user?.avatar_url
                 ? html`
@@ -1622,8 +1772,9 @@ ${this.showForwardModal
               </div>
             `
         : ''}
+        ${typingMessage}
 <form @submit=${this.handleSubmit}>
-  <input type="text" id="content" placeholder="Nhập tin nhắn..." required />
+  <input type="text" id="content" placeholder="Nhập tin nhắn..." required @input=${this.handleInput}/>
   <button type="submit">Gửi</button>
 </form>
 

@@ -225,7 +225,15 @@ defmodule Gchatdemo1Web.ConversationChannel do
     conversation_id = socket.assigns[:conversation_id]
     callee_id = Messaging.get_conversation_friend(conversation_id, user_id)
 
-    {:ok, started_at_dt, _} = DateTime.from_iso8601(started_at)
+    # Nếu started_at là nil, dùng ended_at làm mặc định
+    {:ok, started_at_dt, _} =
+      if started_at do
+        DateTime.from_iso8601(started_at)
+      else
+        # Hoặc dùng DateTime.utc_now()
+        DateTime.from_iso8601(ended_at)
+      end
+
     {:ok, ended_at_dt, _} = DateTime.from_iso8601(ended_at)
 
     case Messaging.create_call_history(
@@ -237,9 +245,7 @@ defmodule Gchatdemo1Web.ConversationChannel do
            ended_at_dt
          ) do
       {:ok, call_history} ->
-        # Broadcast lịch sử cuộc gọi
         broadcast!(socket, "new_call_history", %{call_history: call_history})
-        # Broadcast sự kiện end_call để thông báo cho các client khác
         broadcast!(socket, "end_call", %{})
         IO.puts("Đã phát sự kiện end_call đến tất cả client")
         {:reply, :ok, socket}
@@ -271,6 +277,19 @@ defmodule Gchatdemo1Web.ConversationChannel do
       {:error, _reason} ->
         {:reply, {:error, %{reason: "Không thể lưu lịch sử cuộc gọi"}}, socket}
     end
+  end
+
+  def handle_in("typing_start", _payload, socket) do
+    user_id = socket.assigns.user_id
+    IO.puts("📝 User #{user_id} started typing")
+    broadcast(socket, "user_typing", %{user_id: user_id, typing: true})
+    {:noreply, socket}
+  end
+
+  def handle_in("typing_stop", _payload, socket) do
+    user_id = socket.assigns.user_id
+    broadcast(socket, "user_typing", %{user_id: user_id, typing: false})
+    {:noreply, socket}
   end
 
   def handle_info(:after_join, socket) do
