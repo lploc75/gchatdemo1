@@ -47,7 +47,8 @@ defmodule Gchatdemo1Web.UserSessionController do
         id: user.id,
         email: user.email,
         display_name: user.display_name,
-        avatar_url: user.avatar_url
+        avatar_url: user.avatar_url,
+        insert_at: user.inserted_at
       })
     else
       # Nếu không có user => trả lỗi 401
