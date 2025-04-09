@@ -53,9 +53,9 @@ defmodule Gchatdemo1.Accounts.User do
     |> validate_length(:email, max: 160)
     |> validate_format(
       :email,
-      ~r/^[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*@gmail\.[a-zA-Z]{2,}$/,
+      ~r/^[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*@(gmail\.[a-zA-Z]{2,}|fpt\.edu\.vn)$/,
       message:
-        "Email phải hợp lệ, phần trước '@' chỉ gồm chữ hoặc số, không chứa dấu chấm liên tục, và tên miền phải là 'gmail.xxx'."
+        "Email phải hợp lệ: phần trước '@' chỉ gồm chữ/số (chấm không liên tục), và domain phải là 'gmail.xxx' hoặc 'fpt.edu.vn'."
     )
     |> maybe_validate_unique_email(opts)
   end
