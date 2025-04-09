@@ -9,7 +9,7 @@ defmodule Gchatdemo1Web.AuthController do
         {:ok, _} =
           Accounts.deliver_user_confirmation_instructions(
             user,
-            &("#{Gchatdemo1Web.Endpoint.url()}#{~p"/users/confirm/#{&1}"}")
+            &"http://localhost:5173/user-confirmation/#{&1}"
           )
 
         json(conn, %{success: true, message: "Đăng ký thành công! Kiểm tra email để xác nhận tài khoản."})
