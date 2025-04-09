@@ -33,6 +33,16 @@ defmodule Gchatdemo1Web.GroupChatChannel do
 
     case Chat.send_message(sender_id, group_id, content, reply_to_id) do
       {:ok, message} ->
+        message =
+          Gchatdemo1.Repo.preload(message, [
+            :reactions,
+            :message_statuses,
+            :conversation,
+            :user,
+            :reply_to,
+            :original_sender
+          ])
+
         message_statuses = Chat.get_message_statuses(message.id)
 
         broadcast!(socket, "new_message", %{
@@ -43,12 +53,12 @@ defmodule Gchatdemo1Web.GroupChatChannel do
             reply_to_message: reply_to_message,
             message_status: message_statuses
           },
-          # gán trước ở đây rồi xử lý ở client
           sender: "me",
           email: user_email,
           avatar_url: avatar_url
         })
 
+        # Trả về message đã preload
         {:reply, {:ok, %{status: "sent", message: message}}, socket}
 
       {:error, reason} ->
