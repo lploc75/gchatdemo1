@@ -155,7 +155,7 @@ defmodule Gchatdemo1Web.Router do
     # Tìm kiếm tin nhắn
     get "/messages/search", ChatController, :search_messages
     # Lấy danh sách tin nhắn trong cuộc trò chuyện
-    get "/messages/:conversation_id", ChatController, :get_messages
+    get "/group_messages/:conversation_id", ChatController, :get_messages
 
     # Cập nhật thông tin nhóm
     post "/groups/update", ChatController, :update_group

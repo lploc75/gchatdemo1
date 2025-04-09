@@ -428,7 +428,7 @@ export class ChatRoom extends LitElement {
     this.pinnedMessages = []; // Danh sách tin nhắn ghim
 
     try {
-      const res = await fetch(`/api/messages/${group.conversation.id}`);
+      const res = await fetch(`/api/group_messages/${group.conversation.id}`);
       if (!res.ok) throw new Error("Không thể tải tin nhắn!");
 
       const data = await res.json(); // ✅ Lấy dữ liệu từ API
