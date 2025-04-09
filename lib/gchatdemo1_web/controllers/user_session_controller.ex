@@ -48,7 +48,8 @@ defmodule Gchatdemo1Web.UserSessionController do
         email: user.email,
         display_name: user.display_name,
         avatar_url: user.avatar_url,
-        insert_at: NaiveDateTime.to_date(user.inserted_at) |> Date.to_iso8601()
+        insert_at: NaiveDateTime.to_date(user.inserted_at) |> Date.to_iso8601(),
+        confirm_at: user.confirmed_at |> Date.to_iso8601(),
         })
     else
       # Nếu không có user => trả lỗi 401
