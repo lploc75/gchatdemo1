@@ -2,7 +2,7 @@ defmodule Gchatdemo1.Accounts.User do
   use Ecto.Schema
   import Ecto.Changeset
   @derive {Jason.Encoder,
-  only: [:id, :email, :display_name, :avatar_url, :status, :last_active_at, :role]}
+  only: [:id, :email, :display_name, :avatar_url, :status, :last_active_at,:confirmed_at , :role]}
   schema "users" do
     field :email, :string
     field :password, :string, virtual: true, redact: true
