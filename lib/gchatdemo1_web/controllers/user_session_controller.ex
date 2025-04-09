@@ -36,28 +36,31 @@ defmodule Gchatdemo1Web.UserSessionController do
     end
   end
 
-  # API: Lấy thông tin người dùng đang đăng nhập
-  def get_user_info(conn, _params) do
-    # Lấy user từ conn (gắn bởi plug)
-    user = conn.assigns.current_user
+# API: Lấy thông tin người dùng đang đăng nhập
+def get_user_info(conn, _params) do
+  user = conn.assigns.current_user
 
-    if user do
-      # Trả về thông tin user
-      json(conn, %{
-        id: user.id,
-        email: user.email,
-        display_name: user.display_name,
-        avatar_url: user.avatar_url,
-        insert_at: NaiveDateTime.to_date(user.inserted_at) |> Date.to_iso8601(),
-        confirmed_at: user.confirmed_at |> Date.to_iso8601(),
-        })
-    else
-      # Nếu không có user => trả lỗi 401
-      conn
-      |> put_status(:unauthorized)
-      |> json(%{error: "Unauthorized"})
-    end
+  if user do
+    confirmed_at =
+      case user.confirmed_at do
+        nil -> nil
+        datetime -> Date.to_iso8601(NaiveDateTime.to_date(datetime))
+      end
+
+    json(conn, %{
+      id: user.id,
+      email: user.email,
+      display_name: user.display_name,
+      avatar_url: user.avatar_url,
+      insert_at: NaiveDateTime.to_date(user.inserted_at) |> Date.to_iso8601(),
+      confirmed_at: confirmed_at
+    })
+  else
+    conn
+    |> put_status(:unauthorized)
+    |> json(%{error: "Unauthorized"})
   end
+end
 
   # API: Đăng nhập người dùng
   # Thông tin của json trả về được đặt ở bên kia
