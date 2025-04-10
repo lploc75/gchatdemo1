@@ -1287,6 +1287,7 @@ export class ChatRoom extends LitElement {
   async openEditGroupModal(event, group) {
     event.stopPropagation(); // Ngăn chặn sự kiện click lan ra ngoài
     this.selectedGroup = group;
+    this.selectGroup(group); // 👈 Gọi luôn hàm chọn nhóm
     console.log("🚀 Đang chỉnh sửa nhóm:", this.selectedGroup);
 
     //  Đóng các modal khác trước khi mở modal chỉnh sửa
