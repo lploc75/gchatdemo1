@@ -1729,10 +1729,11 @@ export class ChatRoom extends LitElement {
                     this.typingUser
                       ? html`<div class="typing-indicator">
                           💬
-                          <em
-                            >${this.typingUser.email} đang soạn tin
-                            nhắn...</em
-                          >
+                          <em>
+                            ${this.typingUser.display_name ||
+                            this.typingUser.email}
+                            đang soạn tin nhắn...
+                          </em>
                         </div>`
                       : ""
                   }
