@@ -6,6 +6,7 @@ defmodule Gchatdemo1Web.UserSessionController do
   alias Gchatdemo1Web.UserAuth
 
   # API: Lấy token xác thực hiện tại của người dùng
+  # API: Lấy token xác thực hiện tại của người dùng
   def get_token(conn, _params) do
     # Lấy người dùng hiện tại từ conn (qua plug đã gắn vào)
     user = conn.assigns[:current_user]
@@ -26,7 +27,13 @@ defmodule Gchatdemo1Web.UserSessionController do
           # In ra terminal
           IO.inspect(token, label: "🔥 Token sang endcode64")
           # Trả về token và user_id
-          json(conn, %{token: token, user_id: user.id})
+          json(conn, %{
+            token: token,
+            user_id: user.id,
+            user_email: user.email,
+            user_displayName: user.display_name,
+            user_avatar_url: user.avatar_url
+          })
       end
     else
       # Nếu chưa xác thực => 401 Unauthorized
@@ -36,31 +43,31 @@ defmodule Gchatdemo1Web.UserSessionController do
     end
   end
 
-# API: Lấy thông tin người dùng đang đăng nhập
-def get_user_info(conn, _params) do
-  user = conn.assigns.current_user
+  # API: Lấy thông tin người dùng đang đăng nhập
+  def get_user_info(conn, _params) do
+    user = conn.assigns.current_user
 
-  if user do
-    confirmed_at =
-      case user.confirmed_at do
-        nil -> nil
-        datetime -> Date.to_iso8601(NaiveDateTime.to_date(datetime))
-      end
+    if user do
+      confirmed_at =
+        case user.confirmed_at do
+          nil -> nil
+          datetime -> Date.to_iso8601(NaiveDateTime.to_date(datetime))
+        end
 
-    json(conn, %{
-      id: user.id,
-      email: user.email,
-      display_name: user.display_name,
-      avatar_url: user.avatar_url,
-      insert_at: NaiveDateTime.to_date(user.inserted_at) |> Date.to_iso8601(),
-      confirmed_at: confirmed_at
-    })
-  else
-    conn
-    |> put_status(:unauthorized)
-    |> json(%{error: "Unauthorized"})
+      json(conn, %{
+        id: user.id,
+        email: user.email,
+        display_name: user.display_name,
+        avatar_url: user.avatar_url,
+        insert_at: NaiveDateTime.to_date(user.inserted_at) |> Date.to_iso8601(),
+        confirmed_at: confirmed_at
+      })
+    else
+      conn
+      |> put_status(:unauthorized)
+      |> json(%{error: "Unauthorized"})
+    end
   end
-end
 
   # API: Đăng nhập người dùng
   # Thông tin của json trả về được đặt ở bên kia

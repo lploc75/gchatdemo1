@@ -155,7 +155,11 @@ defmodule Gchatdemo1Web.GroupChatChannel do
     end
   end
 
-  def handle_in("pin_message", %{"message_id" => message_id, "conversation_id" => conversation_id}, socket) do
+  def handle_in(
+        "pin_message",
+        %{"message_id" => message_id, "conversation_id" => conversation_id},
+        socket
+      ) do
     user_id = socket.assigns.user_id
 
     case Chat.pin_message(%{
@@ -167,15 +171,24 @@ defmodule Gchatdemo1Web.GroupChatChannel do
         broadcast!(socket, "message_pinned", %{message: pinned_message})
         {:reply, {:ok, pinned_message}, socket}
 
-      {:error, msg} -> # Lỗi (quá 3 tin nhắn ghim)
+      # Lỗi (quá 3 tin nhắn ghim)
+      {:error, msg} ->
         {:reply, {:error, msg}, socket}
     end
   end
 
-  def handle_in("unpin_message", %{"message_id" => message_id, "conversation_id" => conversation_id}, socket) do
+  def handle_in(
+        "unpin_message",
+        %{"message_id" => message_id, "conversation_id" => conversation_id},
+        socket
+      ) do
     case Chat.unpin_message(message_id, conversation_id) do
       {count, _} when count > 0 ->
-        broadcast!(socket, "message_unpinned", %{message_id: message_id, conversation_id: conversation_id})
+        broadcast!(socket, "message_unpinned", %{
+          message_id: message_id,
+          conversation_id: conversation_id
+        })
+
         {:reply, {:ok, %{message_id: message_id}}, socket}
 
       _ ->
@@ -183,4 +196,27 @@ defmodule Gchatdemo1Web.GroupChatChannel do
     end
   end
 
+  # Nhận tin nhắn từ client
+  def handle_in(
+        "typing",
+        %{
+          "conversation_id" => conversation_id,
+          "user_id" => user_id,
+          "user_email" => user_email,
+          "user_displayName" => display_name,
+          "user_avatar_url" => avatar_url
+        },
+        socket
+      ) do
+    # Broadcast đến tất cả user trong phòng (ngoại trừ người gửi)
+    broadcast!(socket, "user_typing", %{
+      conversation_id: conversation_id,
+      user_id: user_id,
+      user_email: user_email,
+      user_displayName: display_name,
+      user_avatar_url: avatar_url
+    })
+
+    {:noreply, socket}
+  end
 end

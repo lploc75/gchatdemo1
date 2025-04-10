@@ -343,6 +343,31 @@ export class ChatRoom extends LitElement {
       cursor: pointer;
       font-size: 16px;
     }
+    .typing-indicator {
+      padding: 6px 12px;
+      margin: 8px 0;
+      font-style: italic;
+      font-size: 0.9rem;
+      color: #555;
+      background-color: #f0f0f0;
+      border-left: 4px solid #007bff;
+      border-radius: 4px;
+      width: fit-content;
+      max-width: 80%;
+      animation: pulse 1.5s infinite ease-in-out;
+    }
+
+    @keyframes pulse {
+      0% {
+        opacity: 0.6;
+      }
+      50% {
+        opacity: 1;
+      }
+      100% {
+        opacity: 0.6;
+      }
+    }
   `;
 
   static properties = {
@@ -377,13 +402,19 @@ export class ChatRoom extends LitElement {
     this.replyToMessageEmail = ""; // Email người gửi tin nhắn được trả lời
   }
 
-  async getUserIdAndToken() {
+  async getUserInfor() {
     try {
       const res = await fetch("/api/user_token", { credentials: "include" });
       const data = await res.json();
+      console.log("📩 Dữ liệu từ API:", data); // ✅ Kiểm tra dữ liệu API
       if (data.token) {
-        console.log("✅ Đã lấy token và user_id:", data.token, data.user_id);
-        return { token: data.token, userId: data.user_id }; // Returning both token and userId
+        return {
+          token: data.token,
+          userId: data.user_id,
+          userEmail: data.user_email,
+          displayName: data.user_displayName,
+          avatar_url: data.user_avatar_url,
+        };
       } else {
         console.error("❌ Không thể lấy token!", data.error);
         return null;
@@ -396,11 +427,13 @@ export class ChatRoom extends LitElement {
 
   async connectedCallback() {
     super.connectedCallback();
-    const userData = await this.getUserIdAndToken(); // Lấy user id và session token
+    const userData = await this.getUserInfor();
     if (userData) {
-      const { token, userId } = userData; // Destructure to get token and userId
-      console.log("userId:", userId); // Check userId
-      this.userId = userId; // Store userId
+      const { token, userId, userEmail, displayName } = userData;
+      this.userId = userId;
+      this.userEmail = userEmail;
+      this.userDisplayName = displayName;
+      this.UserAvatarURL = userData.avatar_url;
       this.initializeSocket(token);
     }
 
@@ -663,6 +696,26 @@ export class ChatRoom extends LitElement {
         );
         this.requestUpdate();
       });
+
+      // Lắng nghe khi có người đang gõ tin nhắn
+      this.channel.on("user_typing", (payload) => {
+        if (payload.user_id !== this.userId) {
+          this.typingUser = {
+            user_id: payload.user_id,
+            display_name: payload.user_displayName,
+            email: payload.user_email,
+          };
+          console.log("✏️ Người dùng đang soạn tin:", this.typingUser);
+          // Hiện "Đang soạn tin nhắn..." trong 3 giây
+          clearTimeout(this.typingTimeout);
+          this.typingTimeout = setTimeout(() => {
+            this.typingUser = null;
+            this.requestUpdate(); // Cập nhật lại giao diện
+          }, 3000);
+
+          this.requestUpdate(); // Gọi lại render UI để hiện dòng "Đang soạn tin nhắn"
+        }
+      });
     } else {
       console.error("❌ WebSocket chưa được kết nối!");
     }
@@ -720,6 +773,29 @@ export class ChatRoom extends LitElement {
       console.log(`👀 Tin nhắn ID ${messageId} đã được đánh dấu là đã xem!`);
     } catch (error) {
       console.error("❌ Lỗi khi cập nhật tin nhắn đã xem:", error);
+    }
+  }
+  // Bắt sự kiện đang gõ trên ô nhập tin nhắn.
+  onInput(event) {
+    const value = event.target.value;
+    this.messageInput = value;
+    // Kiểm tra nếu đang trong nhóm & có socket
+    if (this.socket && this.selectedGroup) {
+      const now = Date.now();
+      // console.log("📩 Đang nhập tin nhắn:", value);
+
+      // Chỉ gửi typing mỗi 2s (giảm tần suất push socket)
+      if (!this.lastTypingSentAt || now - this.lastTypingSentAt > 2000) {
+        this.lastTypingSentAt = now;
+
+        this.channel.push("typing", {
+          conversation_id: this.selectedGroup.conversation.id,
+          user_id: this.userId,
+          user_email: this.userEmail,
+          user_displayName: this.userDisplayName,
+          user_avatar_url: this.UserAvatarURL,
+        });
+      }
     }
   }
 
@@ -902,7 +978,7 @@ export class ChatRoom extends LitElement {
   // Phương thức lấy danh sách bạn bè từ API
   async loadFriends() {
     try {
-      const res = await fetch("/api/friends");
+      const res = await fetch("/api/get_friends");
       if (!res.ok) throw new Error("Không thể tải danh sách bạn bè!");
       this.friends = await res.json();
       console.log(this.friends);
@@ -1183,7 +1259,9 @@ export class ChatRoom extends LitElement {
       if (conversationId) params.append("conversation_id", conversationId);
       if (userId) params.append("user_id", userId);
 
-      const response = await fetch(`/api/group_messages/search?${params.toString()}`);
+      const response = await fetch(
+        `/api/group_messages/search?${params.toString()}`
+      );
       if (!response.ok) throw new Error("Lỗi khi gọi API");
 
       const data = await response.json();
@@ -1414,28 +1492,30 @@ export class ChatRoom extends LitElement {
                 <div class="pinned-messages">
                   <h4>📌 Tin nhắn ghim</h4>
                   <ul>
-                    ${this.pinnedMessages.length > 0
-                      ? this.pinnedMessages.map(
-                          (msg) => html`
-                            <li class="pinned-message">
-                              <img
-                                class="avatar"
-                                src="${msg.avatar_url}"
-                                alt="Avatar"
-                              />
-                              <div class="message-content">
-                                <strong>${msg.user_email}:</strong>
-                                ${msg.content}
-                              </div>
-                              <button
-                                @click="${() => this.unpinMessage(msg.id)}"
-                              >
-                                ❌
-                              </button>
-                            </li>
-                          `
-                        )
-                      : html`<p>Không có tin nhắn ghim.</p>`}
+                    ${
+                      this.pinnedMessages.length > 0
+                        ? this.pinnedMessages.map(
+                            (msg) => html`
+                              <li class="pinned-message">
+                                <img
+                                  class="avatar"
+                                  src="${msg.avatar_url}"
+                                  alt="Avatar"
+                                />
+                                <div class="message-content">
+                                  <strong>${msg.user_email}:</strong>
+                                  ${msg.content}
+                                </div>
+                                <button
+                                  @click="${() => this.unpinMessage(msg.id)}"
+                                >
+                                  ❌
+                                </button>
+                              </li>
+                            `
+                          )
+                        : html`<p>Không có tin nhắn ghim.</p>`
+                    }
                   </ul>
                 </div>
 
@@ -1447,9 +1527,9 @@ export class ChatRoom extends LitElement {
 
                     <!-- Dropdown và ô tìm kiếm -->
                     <div
-                      class="search-controls ${this.showSearchInput
-                        ? "visible"
-                        : ""}"
+                      class="search-controls ${
+                        this.showSearchInput ? "visible" : ""
+                      }"
                     >
                       <input
                         type="text"
@@ -1479,180 +1559,213 @@ export class ChatRoom extends LitElement {
                     </div>
                   </div>
                   <!-- 🔥 Nếu có kết quả tìm kiếm, hiển thị danh sách tìm kiếm -->
-                  ${this.searchResults && this.searchResults.length > 0
-                    ? html`
-                        <div class="search-results">
-                          ${this.searchResults.map(
+                  ${
+                    this.searchResults && this.searchResults.length > 0
+                      ? html`
+                          <div class="search-results">
+                            ${this.searchResults.map(
+                              (msg) => html`
+                                <div
+                                  class="message ${msg.sender} search-result"
+                                >
+                                  <div class="email">${msg.email}</div>
+                                  <div class="content">${msg.content}</div>
+                                </div>
+                              `
+                            )}
+                          </div>
+                        `
+                      : html`
+                          ${this.messages.map(
                             (msg) => html`
-                              <div class="message ${msg.sender} search-result">
-                                <div class="email">${msg.email}</div>
-                                <div class="content">${msg.content}</div>
+                              <div
+                                class="message-container ${msg.sender === "me"
+                                  ? "me"
+                                  : "other"}"
+                              >
+                                ${msg.sender !== "me"
+                                  ? html`<img
+                                      class="avatar"
+                                      src="${msg.avatar_url}"
+                                      alt="Avatar"
+                                    />`
+                                  : ""}
+                                <div
+                                  class="message ${msg.sender}"
+                                  @contextmenu="${(e) =>
+                                    this.showContextMenu(e, msg.id)}"
+                                >
+                                  <div class="email">${msg.email}</div>
+
+                                  <!-- 🔥 Thêm phần hiển thị tin nhắn được trả lời -->
+                                  ${msg.reply_to_message
+                                    ? html`
+                                        <div class="reply-box">
+                                          <strong
+                                            >${msg.reply_to_message
+                                              .email}:</strong
+                                          >
+                                          <span
+                                            >${msg.reply_to_message
+                                              .content}</span
+                                          >
+                                        </div>
+                                      `
+                                    : ""}
+
+                                  <div class="content">
+                                    ${this.editingMessageId === msg.id
+                                      ? html`
+                                          <input
+                                            type="text"
+                                            .value="${this
+                                              .editingMessageContent}"
+                                            @input="${(e) =>
+                                              (this.editingMessageContent =
+                                                e.target.value)}"
+                                          />
+                                          <button
+                                            @click="${() =>
+                                              this.saveEditedMessage(msg.id)}"
+                                          >
+                                            Lưu
+                                          </button>
+                                          <button
+                                            @click="${() =>
+                                              this.cancelEditing()}"
+                                          >
+                                            Hủy
+                                          </button>
+                                        `
+                                      : msg.is_recalled
+                                      ? html`
+                                          <em>Tin nhắn đã được thu hồi</em>
+                                        `
+                                      : msg.is_edited
+                                      ? html`
+                                          <span
+                                            class="edited-text"
+                                            @click="${() =>
+                                              this.toggleEditHistory(msg.id)}"
+                                          >
+                                            ${msg.content}
+                                            <span class="edited-label"
+                                              >(Đã chỉnh sửa)</span
+                                            >
+                                          </span>
+                                          ${this.showEditHistoryId === msg.id
+                                            ? html`
+                                                <div class="edit-history">
+                                                  ${this.editHistory[
+                                                    msg.id
+                                                  ]?.map(
+                                                    (edit) => html`
+                                                      <div class="edit-item">
+                                                        ${edit.previous_content}
+                                                      </div>
+                                                    `
+                                                  ) ?? ""}
+                                                </div>
+                                              `
+                                            : ""}
+                                        `
+                                      : msg.content}
+                                  </div>
+
+                                  ${Array.isArray(msg.reaction) &&
+                                  msg.reaction.length > 0 &&
+                                  msg.reaction.some(
+                                    (r) => r.emoji !== "unknown"
+                                  )
+                                    ? html`
+                                        <div class="reaction">
+                                          ${msg.reaction
+                                            .filter(
+                                              (r) => r.emoji !== "unknown"
+                                            ) // Lọc bỏ những reaction có giá trị "unknown"
+                                            .map(
+                                              (r) => html`
+                                                <span class="emoji"
+                                                  >${r.emoji}
+                                                  <small
+                                                    >${r.count}</small
+                                                  ></span
+                                                >
+                                              `
+                                            )}
+                                        </div>
+                                      `
+                                    : ""}
+
+                                  <!-- Nút thả emoji ẩn, hiện khi hover -->
+                                  ${!msg.is_recalled
+                                    ? html`
+                                        <div class="emoji-picker">
+                                          ${["😍", "😂", "👍", "❤️"].map(
+                                            (emoji) => html`
+                                              <button
+                                                @click="${() =>
+                                                  this.reactToMessage(
+                                                    msg.id,
+                                                    emoji
+                                                  )}"
+                                              >
+                                                ${emoji}
+                                              </button>
+                                            `
+                                          )}
+                                        </div>
+                                      `
+                                    : ""}
+                                </div>
                               </div>
                             `
                           )}
+                        `
+                  }
+                </div>
+                </div> <!-- end of .messages -->
+                  ${
+                    this.typingUser
+                      ? html`<div class="typing-indicator">
+                          💬
+                          <em
+                            >${this.typingUser.email} đang soạn tin
+                            nhắn...</em
+                          >
+                        </div>`
+                      : ""
+                  }
+                <!-- 🔥 Hiển thị chỉ khi đang trả lời tin nhắn -->
+                ${
+                  this.replyToMessageId
+                    ? html`
+                        <div class="reply-preview">
+                          <p>
+                            Đang trả lời:
+                            <strong>${this.replyToMessageEmail}</strong> -
+                            "${this.replyToMessageContent}"
+                          </p>
+                          <button @click=${this.cancelReply}>Hủy</button>
                         </div>
                       `
-                    : html`
-                        ${this.messages.map(
-                          (msg) => html`
-                            <div
-                              class="message-container ${msg.sender === "me"
-                                ? "me"
-                                : "other"}"
-                            >
-                              ${msg.sender !== "me"
-                                ? html`<img
-                                    class="avatar"
-                                    src="${msg.avatar_url}"
-                                    alt="Avatar"
-                                  />`
-                                : ""}
-                              <div
-                                class="message ${msg.sender}"
-                                @contextmenu="${(e) =>
-                                  this.showContextMenu(e, msg.id)}"
-                              >
-                                <div class="email">${msg.email}</div>
-
-                                <!-- 🔥 Thêm phần hiển thị tin nhắn được trả lời -->
-                                ${msg.reply_to_message
-                                  ? html`
-                                      <div class="reply-box">
-                                        <strong
-                                          >${msg.reply_to_message
-                                            .email}:</strong
-                                        >
-                                        <span
-                                          >${msg.reply_to_message.content}</span
-                                        >
-                                      </div>
-                                    `
-                                  : ""}
-
-                                <div class="content">
-                                  ${this.editingMessageId === msg.id
-                                    ? html`
-                                        <input
-                                          type="text"
-                                          .value="${this.editingMessageContent}"
-                                          @input="${(e) =>
-                                            (this.editingMessageContent =
-                                              e.target.value)}"
-                                        />
-                                        <button
-                                          @click="${() =>
-                                            this.saveEditedMessage(msg.id)}"
-                                        >
-                                          Lưu
-                                        </button>
-                                        <button
-                                          @click="${() => this.cancelEditing()}"
-                                        >
-                                          Hủy
-                                        </button>
-                                      `
-                                    : msg.is_recalled
-                                    ? html` <em>Tin nhắn đã được thu hồi</em> `
-                                    : msg.is_edited
-                                    ? html`
-                                        <span
-                                          class="edited-text"
-                                          @click="${() =>
-                                            this.toggleEditHistory(msg.id)}"
-                                        >
-                                          ${msg.content}
-                                          <span class="edited-label"
-                                            >(Đã chỉnh sửa)</span
-                                          >
-                                        </span>
-                                        ${this.showEditHistoryId === msg.id
-                                          ? html`
-                                              <div class="edit-history">
-                                                ${this.editHistory[msg.id]?.map(
-                                                  (edit) => html`
-                                                    <div class="edit-item">
-                                                      ${edit.previous_content}
-                                                    </div>
-                                                  `
-                                                ) ?? ""}
-                                              </div>
-                                            `
-                                          : ""}
-                                      `
-                                    : msg.content}
-                                </div>
-
-                                ${Array.isArray(msg.reaction) &&
-                                msg.reaction.length > 0 &&
-                                msg.reaction.some((r) => r.emoji !== "unknown")
-                                  ? html`
-                                      <div class="reaction">
-                                        ${msg.reaction
-                                          .filter((r) => r.emoji !== "unknown") // Lọc bỏ những reaction có giá trị "unknown"
-                                          .map(
-                                            (r) => html`
-                                              <span class="emoji"
-                                                >${r.emoji}
-                                                <small>${r.count}</small></span
-                                              >
-                                            `
-                                          )}
-                                      </div>
-                                    `
-                                  : ""}
-
-                                <!-- Nút thả emoji ẩn, hiện khi hover -->
-                                ${!msg.is_recalled
-                                  ? html`
-                                      <div class="emoji-picker">
-                                        ${["😍", "😂", "👍", "❤️"].map(
-                                          (emoji) => html`
-                                            <button
-                                              @click="${() =>
-                                                this.reactToMessage(
-                                                  msg.id,
-                                                  emoji
-                                                )}"
-                                            >
-                                              ${emoji}
-                                            </button>
-                                          `
-                                        )}
-                                      </div>
-                                    `
-                                  : ""}
-                              </div>
-                            </div>
-                          `
-                        )}
-                      `}
-                </div>
-
-                <!-- 🔥 Hiển thị chỉ khi đang trả lời tin nhắn -->
-                ${this.replyToMessageId
-                  ? html`
-                      <div class="reply-preview">
-                        <p>
-                          Đang trả lời:
-                          <strong>${this.replyToMessageEmail}</strong> -
-                          "${this.replyToMessageContent}"
-                        </p>
-                        <button @click=${this.cancelReply}>Hủy</button>
-                      </div>
-                    `
-                  : ""}
+                    : ""
+                }
 
                 <form
                   @submit="${this.sendMessage}"
                   class="message-input"
-                  ?hidden="${this.selectedGroup?.conversation
-                    .only_admin_can_message &&
-                  this.userId !== this.selectedGroup?.admin_user_id}"
+                  ?hidden="${
+                    this.selectedGroup?.conversation.only_admin_can_message &&
+                    this.userId !== this.selectedGroup?.admin_user_id
+                  }"
                 >
                   <input
                     id="message-input"
                     type="text"
                     placeholder="Nhập tin nhắn..."
+                    maxlength="2000"
+                    @input="${this.onInput}"
                   />
                   <button type="submit">Gửi</button>
                 </form>
@@ -1816,25 +1929,25 @@ export class ChatRoom extends LitElement {
                   >Chọn nhóm hoặc người nhận:</label
                 >
                 <select id="conversationSelect">
-  <optgroup label="Nhóm">
-    ${this.groups.map(
-      (group) => html`
-        <option value="${group.conversation.id}">
-          ${group.conversation.name}
-        </option>
-      `
-    )}
-  </optgroup>
-  <optgroup label="Bạn bè">
-    ${this.friends.map(
-      (friend) => html`
-        <option value="${friend.conversation_id}">
-          ${friend.email}
-        </option>
-      `
-    )}
-  </optgroup>
-</select>
+                  <optgroup label="Nhóm">
+                    ${this.groups.map(
+                      (group) => html`
+                        <option value="${group.conversation.id}">
+                          ${group.conversation.name}
+                        </option>
+                      `
+                    )}
+                  </optgroup>
+                  <optgroup label="Bạn bè">
+                    ${this.friends.map(
+                      (friend) => html`
+                        <option value="${friend.conversation_id}">
+                          ${friend.email}
+                        </option>
+                      `
+                    )}
+                  </optgroup>
+                </select>
 
                 <button @click="${this.confirmShare}">Chia sẻ</button>
                 <button @click="${this.closeShareModal}">Hủy</button>
