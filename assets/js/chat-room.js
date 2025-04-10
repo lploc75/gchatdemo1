@@ -1183,7 +1183,7 @@ export class ChatRoom extends LitElement {
       if (conversationId) params.append("conversation_id", conversationId);
       if (userId) params.append("user_id", userId);
 
-      const response = await fetch(`/api/messages/search?${params.toString()}`);
+      const response = await fetch(`/api/group_messages/search?${params.toString()}`);
       if (!response.ok) throw new Error("Lỗi khi gọi API");
 
       const data = await response.json();
