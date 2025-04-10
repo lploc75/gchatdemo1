@@ -66,19 +66,17 @@ defmodule Gchatdemo1Web.PageController do
     friends =
       current_user.id
       |> Accounts.list_friends()
-      # Để debug nếu cần
       |> IO.inspect(label: "friends")
       |> Enum.map(fn friend ->
-        # Lấy hoặc tạo cuộc hội thoại
         conversation_id = Messaging.get_or_create_conversation(current_user.id, friend.friend_id)
-        # Để debug nếu cần
         IO.inspect(conversation_id, label: "conversation")
 
         %{
           id: friend.friend_id,
           email: friend.email,
           avatar_url: friend.avatar_url,
-          conversation_id: conversation_id
+          conversation_id: conversation_id,
+          display_name: Map.get(friend, :display_name, "No name")
         }
       end)
 
@@ -87,7 +85,8 @@ defmodule Gchatdemo1Web.PageController do
       current_user: %{
         id: current_user.id,
         email: current_user.email,
-        avatar_url: current_user.avatar_url
+        avatar_url: current_user.avatar_url,
+        display_name: current_user.display_name
       },
       friends: friends
     })
@@ -107,7 +106,8 @@ defmodule Gchatdemo1Web.PageController do
           id: friend.friend_id,
           email: friend.email,
           avatar_url: friend.avatar_url,
-          conversation_id: conversation_id
+          conversation_id: conversation_id,
+          display_name: friend.display_name
         }
       end)
 
@@ -130,8 +130,9 @@ defmodule Gchatdemo1Web.PageController do
                 searched_user: %{
                   id: searched_user.id,
                   email: searched_user.email,
-                  avatar_url: searched_user.avatar_url
-},
+                  avatar_url: searched_user.avatar_url,
+                  display_name: searched_user.display_name
+                },
                 status: status,
                 # Thêm friends vào response
                 friends: friends
@@ -146,7 +147,8 @@ defmodule Gchatdemo1Web.PageController do
         current_user: %{
           id: current_user.id,
           email: current_user.email,
-          avatar_url: current_user.avatar_url
+          avatar_url: current_user.avatar_url,
+          display_name: current_user.display_name
         },
         friends: friends
       })
@@ -187,7 +189,8 @@ defmodule Gchatdemo1Web.PageController do
           id: req.id,
           sender_id: req.sender_id,
           sender_email: Accounts.get_user!(req.sender_id).email,
-          sender_avatar: Accounts.get_user!(req.sender_id).avatar_url
+          sender_avatar: Accounts.get_user!(req.sender_id).avatar_url,
+          sender_name: Accounts.get_user!(req.sender_id).display_name
         }
       end)
 

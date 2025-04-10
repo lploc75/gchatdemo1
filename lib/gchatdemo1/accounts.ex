@@ -514,7 +514,13 @@ defmodule Gchatdemo1.Accounts do
         on:
           (u.id == f.friend_id and f.user_id == ^user_id) or
             (u.id == f.user_id and f.friend_id == ^user_id),
-        select: %{id: f.id, friend_id: u.id, email: u.email, avatar_url: u.avatar_url}
+        select: %{
+          id: f.id,
+          friend_id: u.id,
+          email: u.email,
+          avatar_url: u.avatar_url,
+          display_name: u.display_name
+        }
     )
   end
 
