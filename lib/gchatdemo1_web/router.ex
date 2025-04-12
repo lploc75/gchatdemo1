@@ -145,7 +145,7 @@ defmodule Gchatdemo1Web.Router do
     get "/user_token", UserSessionController, :get_token
     get "/users/me", UserSessionController, :get_user_info    # Lấy thông tin user
     # Lấy danh sách bạn bè của người dùng
-    get "/friends", ChatController, :get_friends
+    get "/get_friends", ChatController, :get_friends
     # Lấy danh sách bạn bè chưa trong group
     get "/groups/:conversation_id/available_friends", ChatController, :available_friends
     # Lấy dánh sách nhóm của người dùng
