@@ -1,3 +1,13 @@
+# Yêu cầu hệ thống
+- **WSL** (Windows Subsystem for Linux).  
+- **Ubuntu** trên WSL  
+- Cài các công cụ sau trên Ubuntu (WSL): ([Tham khảo](https://hexdocs.pm/phoenix/installation.html))  
+  - **Erlang**  
+  - **Elixir**  
+  - **Phoenix**  
+  - **PostgreSQL**  
+- Đã cài **OBS Studio** trên Windows
+
 Hướng dẫn cho stream:
 1. Tải WSL (window subsystem for linux)
 2. Tải Ubuntu cho wsl
